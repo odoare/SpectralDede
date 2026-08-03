@@ -10,14 +10,15 @@ step by step, and is the first thing to read when picking the project back up.
 
 ## Status
 
-Step 1 of 5 is in place: the project skeleton, the complete parameter set, the
-preset system and the editor shell with a working spectrum view. The audio path
-is dry only, so nothing is audible beyond the input.
+Steps 1 and 2 of 5 are in place: the skeleton and parameter set, and the
+spectral band split. Regions now shape and pan the sound, but they cannot yet
+be drawn (use the host's generic parameter editor) and there are no delays or
+reverb.
 
 | Step | Content | State |
 |---|---|---|
 | 1 | Skeleton, parameters, preset manager, editor shell, spectrum view | done |
-| 2 | `fxme::SpectralBandSplitter` and per-region gate, gain, pan | to do |
+| 2 | `fxme::SpectralBandSplitter` and per-region gate, gain, pan | done |
 | 3 | `fxme::SpectrumRegionEditor` (drawing and editing regions) | to do |
 | 4 | `fxme::StereoCrossDelay`, delay-time modes, region popup | to do |
 | 5 | `fxme::Reverb` over WDL, sends, factory presets, CI | to do |
@@ -38,6 +39,35 @@ The dry signal is never processed: it is the untouched input, level-trimmed.
 Everything the regions do is added on top, so with no region enabled Dede is a
 gain stage.
 
+## The spectral stage
+
+Regions are not bandpass filters. The splitter runs one short-time Fourier
+transform over the input (`fxme::SpectralBandSplitter`, periodic Hann, 75 %
+overlap-add, one analysis FFT per hop and one inverse FFT per active region),
+and a region is a set of bins plus a per-bin gate: inside its interval, bins
+quieter than the gate threshold are muted and the rest pass. That is what lets
+a region take only the peaks of its band, or only its noise floor, which no
+filter can do.
+
+Three consequences shape the rest of the design:
+
+- Everything spectral happens on the mono sum of the input. The spectrum view
+  shows that same mono sum, so a gate line drawn on the trace is compared
+  against exactly the signal it is drawn over. It is also why a region has a
+  pan rather than a balance: the band it emits is mono until it is panned.
+- Gain and pan are applied to the region's time-domain output through smoothed
+  values, not to its bins. Moving them is click-free and costs no transform.
+- The splitter delays by exactly one window (`dede::splitterFftOrder`, 2048
+  samples, 43 ms at 48 kHz). The dry path is delayed by the same amount with a
+  `juce::dsp::DelayLine`, and the total is reported with `setLatencySamples`,
+  so the host puts everything back in place.
+
+The gate threshold is a per-bin level in the dB convention of
+`fxme::SpectrumAnalyzer`. The two only agree exactly when the view and the
+splitter run the same window size, so the editor is to pin the view to the
+splitter's size rather than leave it on the display's own default (step 3,
+which is where the gate becomes drawable in the first place).
+
 ## Where code lives
 
 Anything not specific to Dede goes into the `lib/FxmeTools` submodule under
@@ -46,9 +76,8 @@ Anything not specific to Dede goes into the `lib/FxmeTools` submodule under
 FxmeTools (new or extended, see the steps above):
 
 - `dsp/SpectralBandSplitter.h` — the STFT band split with per-band spectral
-  gate, gain and pan. New in step 2. Depends on the WDL real FFT, like
-  `dsp/SpectralFreeze.h`, so it is included directly rather than through the
-  module umbrella header.
+  gate, gain and pan. Added in step 2, and part of the module umbrella header
+  (it runs on `juce::dsp::FFT` and needs nothing outside JUCE).
 - `components/SpectrumDisplay.h` — extended in step 3 with protected coordinate
   mapping and a paint-overlay hook, so views can be built on top of it without
   copying its grid and trace drawing. Backward compatible.
@@ -128,6 +157,10 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j2 --target Dede_VST3
 ```
 
-Of the WDL sources only `fft.c` is compiled (for the band splitter); the reverb
-engine is header-only. Builds do not install: the built `.vst3` has to be copied
-into the VST3 folder and the DAW made to rescan.
+None of the WDL sources are compiled: the band splitter runs on
+`juce::dsp::FFT`, and the reverb engine Dede takes from WDL
+(`WDL/verbengine.h`) is header-only. The nested submodule still has to be
+checked out for that header to exist.
+
+Builds do not install: the built `.vst3` has to be copied into the VST3 folder
+and the DAW made to rescan.

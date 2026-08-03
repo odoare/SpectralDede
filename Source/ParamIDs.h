@@ -100,6 +100,13 @@ inline constexpr float maxFeedbackDb = 0.0f;
 inline constexpr float minDelayValue = 0.001f;
 inline constexpr float maxDelayValue = 3.0f;
 
+/** Analysis window of the spectral band splitter, as an FFT order: 11 is 2048
+    samples, about 23 Hz of resolution and 43 ms of latency at 48 kHz. It is
+    also the plugin's reported latency, and the window the gate thresholds are
+    measured in — the spectrum view is told to use the same one so the gate
+    line sits where it looks like it sits. */
+inline constexpr int splitterFftOrder = 11;
+
 /** Longest delay any line can be asked for, in seconds: the delay buffers are
     sized for this once, in prepareToPlay. Sync and MIDI-note modes can ask for
     more than maxDelayValue seconds (3 whole notes at a slow tempo), so the

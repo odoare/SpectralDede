@@ -23,12 +23,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # JUCE is expected as a sibling of this repo; FxmeTools lives in-tree as a git
 # submodule under lib/. The module is registered directly rather than through
-# fxmetools_attach: of the WDL sources (FxmeTools' own submodule) Dede needs
-# only fft.c, for the spectral band splitter. The reverb engine
-# (WDL/verbengine.h) is header-only.
+# fxmetools_attach: Dede compiles none of the WDL sources. The band splitter
+# runs on juce::dsp::FFT (so its levels match fxme::SpectrumAnalyzer exactly),
+# and the reverb engine it does take from WDL (WDL/verbengine.h) is
+# header-only. The nested WDL submodule still has to be checked out.
 add_subdirectory(../JUCE JUCE)
 juce_add_module(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/FxmeTools)
-set(FXMETOOLS_WDL_FFT ${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/WDL/WDL/fft.c)
 
 juce_add_plugin(Dede
     COMPANY_NAME                "FX-Mechanics"
@@ -56,7 +56,7 @@ file(GLOB_RECURSE DEDE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/*.h
 )
 
-target_sources(Dede PRIVATE ${DEDE_SOURCES} ${FXMETOOLS_WDL_FFT})
+target_sources(Dede PRIVATE ${DEDE_SOURCES})
 
 # Make every subdirectory under Source/ an include root so headers can be
 # included by name regardless of where a component lives.

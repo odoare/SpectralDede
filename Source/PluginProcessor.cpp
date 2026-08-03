@@ -225,17 +225,35 @@ void DedeAudioProcessor::cacheParameterPointers()
 //==============================================================================
 void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
     sampleRate = newSampleRate;
 
+    splitter.prepare (sampleRate, samplesPerBlock, maxRegions, splitterFftOrder);
+
+    monoBuffer.setSize (1, samplesPerBlock, false, false, true);
+    wetBuffer.setSize (2, samplesPerBlock, false, false, true);
+    monoBuffer.clear();
+    wetBuffer.clear();
+
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
+    dryDelay.setMaximumDelayInSamples (juce::jmax (1, splitter.getLatencySamples()));
+    dryDelay.prepare (spec);
+    dryDelay.setDelay ((float) splitter.getLatencySamples());
+    dryDelay.reset();
+
+    setLatencySamples (splitter.getLatencySamples());
+
     dryGain.reset (sampleRate, 0.02);
+    wetGain.reset (sampleRate, 0.02);
     outGain.reset (sampleRate, 0.02);
     dryGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
+    wetGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pWetLevel->load()));
     outGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pOutLevel->load()));
 }
 
 void DedeAudioProcessor::releaseResources()
 {
+    splitter.reset();
+    dryDelay.reset();
 }
 
 bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -269,33 +287,90 @@ void DedeAudioProcessor::updateTransportAndMidi (const juce::MidiBuffer& midi)
     }
 }
 
-void DedeAudioProcessor::feedInputTap (const juce::AudioBuffer<float>& buffer)
+void DedeAudioProcessor::buildMonoInput (const juce::AudioBuffer<float>& buffer, int startSample,
+                                         int numSamples)
 {
-    if (! inputTap.isEnabled())
-        return;
+    const int numCh  = juce::jmax (1, buffer.getNumChannels());
+    const float norm = 1.0f / (float) numCh;
 
-    constexpr int chunk = 256;
-    float mono[chunk];
+    float* mono = monoBuffer.getWritePointer (0);
+    juce::FloatVectorOperations::clear (mono, numSamples);
 
-    const int numCh = buffer.getNumChannels();
-    const int n     = buffer.getNumSamples();
-    const float norm = numCh > 0 ? 1.0f / (float) numCh : 1.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        juce::FloatVectorOperations::addWithMultiply (
+            mono, buffer.getReadPointer (ch, startSample), norm, numSamples);
+}
 
-    for (int start = 0; start < n; start += chunk)
+void DedeAudioProcessor::updateBands()
+{
+    for (int i = 0; i < maxRegions; ++i)
     {
-        const int count = juce::jmin (chunk, n - start);
+        const auto& r = regions[i];
 
-        for (int i = 0; i < count; ++i)
-            mono[i] = 0.0f;
+        // A region whose borders have been dragged past each other is still a
+        // valid region: take the interval either way round.
+        const float a = r.fLo->load(), b = r.fHi->load();
+        const float gateDb = r.gate->load();
 
-        for (int ch = 0; ch < numCh; ++ch)
+        fxme::SpectralBand band;
+        band.enabled = r.on->load() > 0.5f;
+        band.lowHz   = juce::jmin (a, b);
+        band.highHz  = juce::jmax (a, b);
+        band.gateDb  = gateDb <= gateFloorDb ? fxme::SpectralBandSplitter::openGateDb
+                                             : gateDb;
+        band.gainDb  = r.gain->load();
+        band.pan     = r.pan->load();
+
+        splitter.setBand (i, band);
+    }
+}
+
+void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int startSample,
+                                       int numSamples)
+{
+    const int numOut = getTotalNumOutputChannels();
+
+    // The band splitter and the spectrum view both work on the mono sum, so
+    // the gate thresholds the user draws on the trace are the ones the DSP
+    // compares against.
+    buildMonoInput (buffer, startSample, numSamples);
+    inputTap.push (monoBuffer.getReadPointer (0), numSamples);
+
+    splitter.process (monoBuffer.getReadPointer (0), numSamples);
+
+    // Sum every region into the wet bus. Step 4 puts each region's stereo delay
+    // between the splitter and this sum; for now the bands go straight in.
+    wetBuffer.clear (0, numSamples);
+    for (int i = 0; i < maxRegions; ++i)
+    {
+        if (regions[i].on->load() <= 0.5f)
+            continue;
+
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::add (wetBuffer.getWritePointer (ch),
+                                              splitter.getBandOutput (i, ch), numSamples);
+    }
+
+    const float* wetL = wetBuffer.getReadPointer (0);
+    const float* wetR = wetBuffer.getReadPointer (1);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float dg = dryGain.getNextValue();
+        const float wg = wetGain.getNextValue();
+        const float og = outGain.getNextValue();
+        const float wet[2] { wetL[i], wetR[i] };
+
+        for (int ch = 0; ch < numOut; ++ch)
         {
-            const float* src = buffer.getReadPointer (ch, start);
-            for (int i = 0; i < count; ++i)
-                mono[i] += src[i] * norm;
-        }
+            // The dry path is delayed to match the splitter, so the two arrive
+            // together and the host's latency compensation lines both up.
+            float* d = buffer.getWritePointer (ch, startSample);
+            dryDelay.pushSample (ch, d[i]);
+            const float dry = dryDelay.popSample (ch);
 
-        inputTap.push (mono, count);
+            d[i] = og * (dg * dry + wg * wet[juce::jmin (ch, 1)]);
+        }
     }
 }
 
@@ -308,25 +383,24 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numOut = getTotalNumOutputChannels();
     const int n      = buffer.getNumSamples();
 
+    if (n <= 0 || numOut <= 0)
+        return;
+
     // A mono input feeding a stereo bus: duplicate before anything else, so the
     // rest of the chain only ever sees a full set of channels.
     for (int ch = numIn; ch < numOut; ++ch)
-        buffer.copyFrom (ch, 0, buffer, juce::jmin (ch, numIn - 1), 0, n);
+        buffer.copyFrom (ch, 0, buffer, juce::jmax (0, juce::jmin (ch, numIn - 1)), 0, n);
 
     updateTransportAndMidi (midiMessages);
-    feedInputTap (buffer);
+    updateBands();
 
-    // Step 1 is the dry path only: the spectral band splitter, the per-region
-    // delays and the reverb are added in the following steps.
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
+    wetGain.setTargetValue (juce::Decibels::decibelsToGain (pWetLevel->load()));
     outGain.setTargetValue (juce::Decibels::decibelsToGain (pOutLevel->load()));
 
-    for (int i = 0; i < n; ++i)
-    {
-        const float g = dryGain.getNextValue() * outGain.getNextValue();
-        for (int ch = 0; ch < numOut; ++ch)
-            buffer.getWritePointer (ch)[i] *= g;
-    }
+    const int maxChunk = juce::jmax (1, monoBuffer.getNumSamples());
+    for (int start = 0; start < n; start += maxChunk)
+        processChunk (buffer, start, juce::jmin (maxChunk, n - start));
 }
 
 //==============================================================================

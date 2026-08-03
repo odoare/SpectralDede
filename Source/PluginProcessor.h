@@ -114,13 +114,31 @@ private:
     std::atomic<float>* pRevWidth = nullptr;
     std::atomic<float>* pRevLevel = nullptr;
 
-    /** Mono-sums a block into the spectrum tap in fixed-size chunks, so no
-        scratch buffer has to be sized (or resized) on the audio thread. */
-    void feedInputTap (const juce::AudioBuffer<float>& buffer);
+    /** Mono-sums the input into monoBuffer: what the spectrum view shows and
+        what the band splitter is fed are then one and the same signal, which
+        is what makes a gate line drawn on the trace mean anything. */
+    void buildMonoInput (const juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
+
+    /** Copies the current region parameters into the splitter's bands. */
+    void updateBands();
+
+    /** The whole wet path for at most one prepared block's worth of samples.
+        processBlock chunks by this so a host that hands over more than the
+        block size it promised cannot run past the scratch buffers. */
+    void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     fxme::SpectrumTap inputTap;
+    fxme::SpectralBandSplitter splitter;
 
-    juce::SmoothedValue<float> dryGain, outGain;
+    /** The dry path is delayed by the splitter's latency so it stays lined up
+        with the regions; the total is then reported to the host, which shifts
+        the whole thing back into place. */
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 1 };
+
+    juce::AudioBuffer<float> monoBuffer;   // 1 channel, the splitter's input
+    juce::AudioBuffer<float> wetBuffer;    // stereo, the summed regions
+
+    juce::SmoothedValue<float> dryGain, wetGain, outGain;
 
     std::atomic<double> currentBpm { 120.0 };
     std::atomic<float>  lastNoteHz { 0.0f };
