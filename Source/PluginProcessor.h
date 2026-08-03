@@ -127,16 +127,23 @@ private:
         block size it promised cannot run past the scratch buffers. */
     void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
+    /** Reads one region's delay-time parameters through the resolver, which
+        needs the transport and the last MIDI note to make sense of the sync
+        and note modes. */
+    void updateDelay (int slot);
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
+    fxme::StereoCrossDelay delays[dede::maxRegions];
 
     /** The dry path is delayed by the splitter's latency so it stays lined up
         with the regions; the total is then reported to the host, which shifts
         the whole thing back into place. */
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 1 };
 
-    juce::AudioBuffer<float> monoBuffer;   // 1 channel, the splitter's input
-    juce::AudioBuffer<float> wetBuffer;    // stereo, the summed regions
+    juce::AudioBuffer<float> monoBuffer;    // 1 channel, the splitter's input
+    juce::AudioBuffer<float> regionBuffer;  // stereo, one region's delay output
+    juce::AudioBuffer<float> wetBuffer;     // stereo, the summed regions
 
     juce::SmoothedValue<float> dryGain, wetGain, outGain;
 

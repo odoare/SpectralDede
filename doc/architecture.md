@@ -10,17 +10,16 @@ step by step, and is the first thing to read when picking the project back up.
 
 ## Status
 
-Steps 1 to 3 of 5 are in place: the skeleton and parameter set, the spectral
-band split, and the region editor. Regions can now be drawn, shaped and panned
-on the spectrum view. There are no delays and no reverb yet, so clicking a
-region has nothing to open.
+Steps 1 to 4 of 5 are in place: the skeleton and parameter set, the spectral
+band split, the region editor and the per-region delays. What is missing is the
+reverb, so the per-region send parameter exists but goes nowhere.
 
 | Step | Content | State |
 |---|---|---|
 | 1 | Skeleton, parameters, preset manager, editor shell, spectrum view | done |
 | 2 | `fxme::SpectralBandSplitter` and per-region gate, gain, pan | done |
 | 3 | `fxme::SpectrumRegionEditor` (drawing and editing regions) | done |
-| 4 | `fxme::StereoCrossDelay`, delay-time modes, region popup | to do |
+| 4 | `fxme::StereoCrossDelay`, delay-time modes, region popup | done |
 | 5 | `fxme::Reverb` over WDL, sends, factory presets, CI | to do |
 
 ## Signal flow
@@ -89,10 +88,13 @@ FxmeTools (new or extended, see the steps above):
   handles, drag-to-create and Delete-to-remove. It owns no values: every
   gesture reports through a callback and the consumer pushes the result back
   with `setRegion`, which is what keeps the APVTS the single source of truth.
-- `dsp/StereoCrossDelay.h` — new in step 4: two `fxme::DelayLine`s with a left,
-  right and cross feedback matrix.
-- `dsp/DelayTimeResolver.h` — new in step 4: one delay value read as seconds, a
-  fraction of a whole note, or a multiple of a MIDI note period.
+- `dsp/StereoCrossDelay.h` — added in step 4: two `fxme::DelayLine`s (their own
+  feedback switched off) under a left, right and cross feedback matrix, with
+  damping on the fed-back signal. It scales the three gains together whenever
+  either line would receive a total of 1 or more, so no combination of
+  parameter values can turn it into an oscillator.
+- `dsp/DelayTimeResolver.h` — added in step 4: one delay value read as seconds,
+  a proportion of a whole note, or a multiple of a note period.
 - `dsp/Reverb.h` — new in step 5: a JUCE-friendly float wrapper over
   `WDL_ReverbEngine` (WDL/verbengine.h, Freeverb).
 
@@ -102,7 +104,11 @@ Dede's own `Source/`:
 - `Theme.h` — palette, per-region colours, control styling, geometry.
 - `PluginProcessor.{h,cpp}` — APVTS, cached parameter pointers, transport and
   MIDI state, the audio path.
-- `PluginEditor.{h,cpp}` — window layout, global controls, preset chrome.
+- `PluginEditor.{h,cpp}` — window layout, global controls, preset chrome, and
+  the wiring between the region editor and the parameters.
+- `RegionPanel.{h,cpp}` — the callout opened by clicking a region: its two
+  delay times and their mode, its three feedback gains and its reverb send.
+  Nothing that has a handle on the spectrum appears here.
 
 ## The editor and the parameters
 
@@ -151,7 +157,15 @@ One value per side, 0.001 to 3, read three ways:
   This is why the plugin declares MIDI input while being an audio effect.
 
 Sync and MIDI-note modes can ask for far more than 3 seconds, so the delay
-buffers are sized for `dede::maxDelaySeconds` (12 s) and the resolver clamps.
+buffers are sized for `dede::maxDelaySeconds` (6 s, three whole notes at 120
+BPM) and `fxme::DelayTimeResolver` clamps to that. Six is a compromise rather
+than a limit of the design: there are two delay lines per region slot, so every
+extra second costs real memory whether or not anyone uses it.
+
+Feedback is a dB value whose minimum means silence rather than -60 dB, so a
+delay set to no feedback is exactly one repeat. `fxme::StereoCrossDelay` then
+scales the three gains together if either line would receive a total of 1 or
+more, which is why no combination of parameter values can make it oscillate.
 
 ## State
 

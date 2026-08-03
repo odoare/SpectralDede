@@ -109,8 +109,10 @@ inline constexpr int splitterFftOrder = 11;
 
 /** Longest delay any line can be asked for, in seconds: the delay buffers are
     sized for this once, in prepareToPlay. Sync and MIDI-note modes can ask for
-    more than maxDelayValue seconds (3 whole notes at a slow tempo), so the
-    buffer is generous and the resolver clamps to it. */
-inline constexpr float maxDelaySeconds = 12.0f;
+    more than maxDelayValue seconds (three whole notes at a slow tempo), so the
+    buffer has room beyond the parameter's own range and the resolver clamps to
+    it. Six seconds is three whole notes at 120 BPM; going much further would
+    cost real memory, at two lines per region slot. */
+inline constexpr float maxDelaySeconds = 6.0f;
 
 } // namespace dede

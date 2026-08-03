@@ -11,6 +11,7 @@
 */
 
 #include "PluginEditor.h"
+#include "RegionPanel.h"
 
 using namespace dede;
 
@@ -24,7 +25,12 @@ namespace
         "  drag a border to move it, drag inside to move the whole band\n"
         "  drag the dashed line to set the gate: what rises above it passes\n"
         "  drag the round handle for gain (up/down) and pan (left/right)\n"
+        "  click a region to open its delay settings\n"
         "  Delete or Backspace removes the selected region\n\n"
+        "Delay times read three ways, chosen per region: seconds, a proportion "
+        "of a whole note at the host tempo (0.25 is a quarter note), or a "
+        "multiple of the period of the last MIDI note received. The panel shows "
+        "what each side currently comes to in milliseconds.\n\n"
         "Spectrum view:\n"
         "  wheel zooms the level axis, ctrl+wheel the frequency axis\n"
         "  alt+drag or middle-drag pans, double-click resets\n"
@@ -236,8 +242,24 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         refreshRegionsFromParameters (true);
     };
 
+    spectrum.onRegionClicked = [this] (int slot) { showRegionPanel (slot); };
+
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
+}
+
+void DedeAudioProcessorEditor::showRegionPanel (int slot)
+{
+    if (! juce::isPositiveAndBelow (slot, maxRegions))
+        return;
+
+    // Anchor the callout on the region's own rectangle, so it points at the
+    // band it belongs to rather than at the pointer.
+    const auto area = getLocalArea (&spectrum, spectrum.getRegionArea (slot).toFloat())
+                          .toNearestInt();
+
+    juce::CallOutBox::launchAsynchronously (std::make_unique<RegionPanel> (processor, slot),
+                                            area, this);
 }
 
 //==============================================================================

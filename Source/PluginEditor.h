@@ -54,6 +54,9 @@ private:
     /** First slot whose "on" parameter is false, or -1 when all are in use. */
     int findFreeSlot() const;
 
+    /** Opens one region's delay settings in a callout anchored on it. */
+    void showRegionPanel (int slot);
+
     DedeAudioProcessor& processor;
     fxme::FxmeLookAndFeel laf;
 

@@ -229,9 +229,14 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
 
     splitter.prepare (sampleRate, samplesPerBlock, maxRegions, splitterFftOrder);
 
+    for (auto& d : delays)
+        d.prepare (sampleRate, maxDelaySeconds);
+
     monoBuffer.setSize (1, samplesPerBlock, false, false, true);
+    regionBuffer.setSize (2, samplesPerBlock, false, false, true);
     wetBuffer.setSize (2, samplesPerBlock, false, false, true);
     monoBuffer.clear();
+    regionBuffer.clear();
     wetBuffer.clear();
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
@@ -254,6 +259,8 @@ void DedeAudioProcessor::releaseResources()
 {
     splitter.reset();
     dryDelay.reset();
+    for (auto& d : delays)
+        d.reset();
 }
 
 bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -325,6 +332,33 @@ void DedeAudioProcessor::updateBands()
     }
 }
 
+void DedeAudioProcessor::updateDelay (int slot)
+{
+    const auto& r = regions[slot];
+
+    fxme::DelayTimeResolver resolver;
+    resolver.bpm        = currentBpm.load();
+    resolver.noteHz     = lastNoteHz.load();
+    resolver.maxSeconds = maxDelaySeconds;
+
+    const auto mode = (fxme::DelayTimeMode) juce::jlimit (0, numDelayModes - 1,
+                                                          (int) r.mode->load());
+
+    delays[slot].setDelaySeconds (resolver.toSeconds (r.timeL->load(), mode),
+                                  resolver.toSeconds (r.timeR->load(), mode));
+
+    // The lowest point of a feedback range is silence, not -60 dB: a delay set
+    // to no feedback has to be exactly one repeat.
+    const auto feedbackGain = [] (float db)
+    {
+        return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
+    };
+
+    delays[slot].setFeedback (feedbackGain (r.fbL->load()),
+                              feedbackGain (r.fbR->load()),
+                              feedbackGain (r.fbX->load()));
+}
+
 void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int startSample,
                                        int numSamples)
 {
@@ -338,17 +372,23 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
     splitter.process (monoBuffer.getReadPointer (0), numSamples);
 
-    // Sum every region into the wet bus. Step 4 puts each region's stereo delay
-    // between the splitter and this sum; for now the bands go straight in.
+    // Each region's band goes through its own stereo delay, and the delay
+    // outputs are what the wet bus carries: the region's direct sound is
+    // already there in the untouched dry path.
     wetBuffer.clear (0, numSamples);
     for (int i = 0; i < maxRegions; ++i)
     {
         if (regions[i].on->load() <= 0.5f)
             continue;
 
+        updateDelay (i);
+        delays[i].process (splitter.getBandOutput (i, 0), splitter.getBandOutput (i, 1),
+                           regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
+                           numSamples);
+
         for (int ch = 0; ch < 2; ++ch)
             juce::FloatVectorOperations::add (wetBuffer.getWritePointer (ch),
-                                              splitter.getBandOutput (i, ch), numSamples);
+                                              regionBuffer.getReadPointer (ch), numSamples);
     }
 
     const float* wetL = wetBuffer.getReadPointer (0);
