@@ -20,7 +20,8 @@
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                 private juce::ChangeListener
+                                 private juce::ChangeListener,
+                                 private juce::Timer
 {
 public:
     explicit DedeAudioProcessorEditor (DedeAudioProcessor&);
@@ -31,10 +32,27 @@ public:
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void timerCallback() override;
 
     /** Rotary style, accent, label and visibility in one call — every global
         knob is set up identically. */
     void setUpKnob (fxme::FxmeSlider& knob, juce::Colour accent);
+
+    //==========================================================================
+    // Region editing. The parameters stay the single source of truth: the view
+    // is refreshed from them on a timer (so automation and preset loads show
+    // up with no extra wiring), and every gesture in the view writes back
+    // through the host.
+
+    void wireRegionEditor();
+    void refreshRegionsFromParameters (bool force);
+    fxme::SpectrumRegionEditor::Region regionFromParameters (int slot) const;
+
+    void setParameter (const juce::String& id, float value);
+    void beginGesture (int slot, fxme::SpectrumRegionEditor::Handle handle, bool begin);
+
+    /** First slot whose "on" parameter is false, or -1 when all are in use. */
+    int findFreeSlot() const;
 
     DedeAudioProcessor& processor;
     fxme::FxmeLookAndFeel laf;
@@ -42,7 +60,8 @@ private:
     fxme::TopBar topBar { "Dede", "spectral multi-delay and reverb",
                           JucePlugin_VersionString, juce::Image() };
 
-    fxme::SpectrumDisplay spectrum;
+    fxme::SpectrumRegionEditor spectrum;
+    fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
 
     // Global controls: levels on the left, the shared reverb on the right.
     fxme::FxmeSlider dryKnob      { processor.getAPVTS(), dede::ids::dryLevel, "Dry",     dede::theme::accent };

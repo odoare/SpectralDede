@@ -10,16 +10,16 @@ step by step, and is the first thing to read when picking the project back up.
 
 ## Status
 
-Steps 1 and 2 of 5 are in place: the skeleton and parameter set, and the
-spectral band split. Regions now shape and pan the sound, but they cannot yet
-be drawn (use the host's generic parameter editor) and there are no delays or
-reverb.
+Steps 1 to 3 of 5 are in place: the skeleton and parameter set, the spectral
+band split, and the region editor. Regions can now be drawn, shaped and panned
+on the spectrum view. There are no delays and no reverb yet, so clicking a
+region has nothing to open.
 
 | Step | Content | State |
 |---|---|---|
 | 1 | Skeleton, parameters, preset manager, editor shell, spectrum view | done |
 | 2 | `fxme::SpectralBandSplitter` and per-region gate, gain, pan | done |
-| 3 | `fxme::SpectrumRegionEditor` (drawing and editing regions) | to do |
+| 3 | `fxme::SpectrumRegionEditor` (drawing and editing regions) | done |
 | 4 | `fxme::StereoCrossDelay`, delay-time modes, region popup | to do |
 | 5 | `fxme::Reverb` over WDL, sends, factory presets, CI | to do |
 
@@ -78,11 +78,17 @@ FxmeTools (new or extended, see the steps above):
 - `dsp/SpectralBandSplitter.h` — the STFT band split with per-band spectral
   gate, gain and pan. Added in step 2, and part of the module umbrella header
   (it runs on `juce::dsp::FFT` and needs nothing outside JUCE).
-- `components/SpectrumDisplay.h` — extended in step 3 with protected coordinate
-  mapping and a paint-overlay hook, so views can be built on top of it without
-  copying its grid and trace drawing. Backward compatible.
-- `components/SpectrumRegionEditor.h` — new in step 3: rectangular regions over
-  a spectrum, with border, gate and gain/pan handles.
+- `components/SpectrumDisplay.h` — extended in step 3, backward compatibly:
+  `getPlotArea`, `freqToX`, `xToFreq`, `dbToY`, `yToDb`, `overBadge` and
+  `overLegend` moved from private to protected, two paint hooks
+  (`paintBehindTraces`, `paintOverTraces`) were added, and the analysis window
+  can now be set and pinned from code (`setFftOrder`, `setFftSizeLocked`).
+  Nothing that existed changed meaning.
+- `components/SpectrumRegionEditor.h/.cpp` — added in step 3: a fixed pool of
+  rectangular regions over a `SpectrumDisplay`, with border, gate and gain/pan
+  handles, drag-to-create and Delete-to-remove. It owns no values: every
+  gesture reports through a callback and the consumer pushes the result back
+  with `setRegion`, which is what keeps the APVTS the single source of truth.
 - `dsp/StereoCrossDelay.h` — new in step 4: two `fxme::DelayLine`s with a left,
   right and cross feedback matrix.
 - `dsp/DelayTimeResolver.h` — new in step 4: one delay value read as seconds, a
@@ -97,6 +103,21 @@ Dede's own `Source/`:
 - `PluginProcessor.{h,cpp}` — APVTS, cached parameter pointers, transport and
   MIDI state, the audio path.
 - `PluginEditor.{h,cpp}` — window layout, global controls, preset chrome.
+
+## The editor and the parameters
+
+The region editor never holds a value of its own. Every gesture calls back into
+`PluginEditor`, which writes to the APVTS through
+`setValueNotifyingHost`, and a 20 Hz timer reads the parameters back and pushes
+them into the view. Automation, a preset load and a drag all take the same
+route, so none of them needs special handling and none of them can leave the
+view showing something the DSP is not doing. Drags are bracketed in
+`beginChangeGesture`/`endChangeGesture` on exactly the parameters that handle
+touches, so a host records one gesture rather than a stream of writes.
+
+Creating a region means finding the first slot whose `on` parameter is false
+and filling it in; deleting one means setting that parameter back to false. The
+slot keeps its index, its colour and its position in the pool either way.
 
 ## Parameters
 
