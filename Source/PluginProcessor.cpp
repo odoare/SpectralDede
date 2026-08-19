@@ -232,12 +232,19 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
 
+    reverb.prepare (sampleRate, samplesPerBlock);
+    reverb.setRoomSize (pRevRoom->load());
+    reverb.setDamping (pRevDamp->load());
+    reverb.setWidth (pRevWidth->load());
+
     monoBuffer.setSize (1, samplesPerBlock, false, false, true);
     regionBuffer.setSize (2, samplesPerBlock, false, false, true);
     wetBuffer.setSize (2, samplesPerBlock, false, false, true);
+    sendBuffer.setSize (2, samplesPerBlock, false, false, true);
     monoBuffer.clear();
     regionBuffer.clear();
     wetBuffer.clear();
+    sendBuffer.clear();
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
     dryDelay.setMaximumDelayInSamples (juce::jmax (1, splitter.getLatencySamples()));
@@ -249,16 +256,25 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
 
     dryGain.reset (sampleRate, 0.02);
     wetGain.reset (sampleRate, 0.02);
+    revGain.reset (sampleRate, 0.02);
     outGain.reset (sampleRate, 0.02);
     dryGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
     wetGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pWetLevel->load()));
+    revGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pRevLevel->load()));
     outGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pOutLevel->load()));
+
+    for (int i = 0; i < maxRegions; ++i)
+    {
+        sendGain[i].reset (sampleRate, 0.02);
+        sendGain[i].setCurrentAndTargetValue (sendLevel (i));
+    }
 }
 
 void DedeAudioProcessor::releaseResources()
 {
     splitter.reset();
     dryDelay.reset();
+    reverb.reset();
     for (auto& d : delays)
         d.reset();
 }
@@ -332,6 +348,12 @@ void DedeAudioProcessor::updateBands()
     }
 }
 
+float DedeAudioProcessor::sendLevel (int slot) const
+{
+    const float db = regions[slot].send->load();
+    return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
+}
+
 void DedeAudioProcessor::updateDelay (int slot)
 {
     const auto& r = regions[slot];
@@ -376,6 +398,8 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     // outputs are what the wet bus carries: the region's direct sound is
     // already there in the untouched dry path.
     wetBuffer.clear (0, numSamples);
+    sendBuffer.clear (0, numSamples);
+
     for (int i = 0; i < maxRegions; ++i)
     {
         if (regions[i].on->load() <= 0.5f)
@@ -386,20 +410,49 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
                            regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
                            numSamples);
 
+        // The send is taken after the delay, so what reaches the reverb is the
+        // region's repeats rather than its dry band.
+        sendGain[i].setTargetValue (sendLevel (i));
+
         for (int ch = 0; ch < 2; ++ch)
             juce::FloatVectorOperations::add (wetBuffer.getWritePointer (ch),
                                               regionBuffer.getReadPointer (ch), numSamples);
+
+        auto* sendL = sendBuffer.getWritePointer (0);
+        auto* sendR = sendBuffer.getWritePointer (1);
+        const auto* regL = regionBuffer.getReadPointer (0);
+        const auto* regR = regionBuffer.getReadPointer (1);
+
+        for (int s = 0; s < numSamples; ++s)
+        {
+            const float g = sendGain[i].getNextValue();
+            sendL[s] += regL[s] * g;
+            sendR[s] += regR[s] * g;
+        }
     }
+
+    // The reverb runs every block whatever the sends are doing, so a tail keeps
+    // ringing after the region that fed it has been turned down or deleted.
+    reverb.setRoomSize (pRevRoom->load());
+    reverb.setDamping (pRevDamp->load());
+    reverb.setWidth (pRevWidth->load());
+    reverb.process (sendBuffer.getReadPointer (0), sendBuffer.getReadPointer (1),
+                    sendBuffer.getWritePointer (0), sendBuffer.getWritePointer (1),
+                    numSamples);
 
     const float* wetL = wetBuffer.getReadPointer (0);
     const float* wetR = wetBuffer.getReadPointer (1);
+    const float* revL = sendBuffer.getReadPointer (0);
+    const float* revR = sendBuffer.getReadPointer (1);
 
     for (int i = 0; i < numSamples; ++i)
     {
         const float dg = dryGain.getNextValue();
         const float wg = wetGain.getNextValue();
+        const float rg = revGain.getNextValue();
         const float og = outGain.getNextValue();
         const float wet[2] { wetL[i], wetR[i] };
+        const float rev[2] { revL[i], revR[i] };
 
         for (int ch = 0; ch < numOut; ++ch)
         {
@@ -409,7 +462,8 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
             dryDelay.pushSample (ch, d[i]);
             const float dry = dryDelay.popSample (ch);
 
-            d[i] = og * (dg * dry + wg * wet[juce::jmin (ch, 1)]);
+            const int side = juce::jmin (ch, 1);
+            d[i] = og * (dg * dry + wg * wet[side] + rg * rev[side]);
         }
     }
 }
@@ -436,6 +490,7 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
     wetGain.setTargetValue (juce::Decibels::decibelsToGain (pWetLevel->load()));
+    revGain.setTargetValue (juce::Decibels::decibelsToGain (pRevLevel->load()));
     outGain.setTargetValue (juce::Decibels::decibelsToGain (pOutLevel->load()));
 
     const int maxChunk = juce::jmax (1, monoBuffer.getNumSamples());

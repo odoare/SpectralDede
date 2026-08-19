@@ -9,8 +9,37 @@ cross feedback) and a send to a shared reverb. Delay times can be set in
 seconds, synced to the host tempo, or tuned to the period of the last MIDI note
 received.
 
-The plugin is under construction. See [doc/architecture.md](doc/architecture.md)
-for the design and the current state.
+Because the split is spectral rather than a bank of filters, a region can be
+made to pass only the peaks of its band, or only its noise floor, which is what
+the gate is for. See [doc/architecture.md](doc/architecture.md) for the design.
+
+## Using it
+
+The spectrum view is the whole interface.
+
+- Drag on empty space to draw a region. Drag a border to move it, drag inside
+  to move the whole band.
+- The dashed line is the gate: what rises above it passes, the rest of the band
+  is dropped. Drag it up into the trace and only the peaks get through.
+- The round handle sets the region's gain (up and down) and its pan (left and
+  right, across the region's own width).
+- Click a region to open its delay settings: the two times and how they are
+  read, the three feedback gains, and the send to the reverb.
+- Delete or Backspace removes the selected region. Up to eight at once.
+
+Delay times read three ways, chosen per region: seconds, a proportion of a
+whole note at the host tempo (0.25 is a quarter note), or a multiple of the
+period of the last MIDI note received. The last one turns a short delay into a
+resonator tuned to whatever is played, so Dede takes MIDI input while being an
+audio effect.
+
+On the view itself, the wheel zooms the level axis and ctrl+wheel the frequency
+axis; alt+drag or middle-drag pans, and a double-click resets both. Plain drag
+is reserved for drawing regions.
+
+The plugin reports its analysis latency (2048 samples, 43 ms at 48 kHz) to the
+host, which compensates for it. The dry path is delayed to match, so nothing
+inside Dede is out of step with anything else.
 
 ## Building
 
@@ -24,6 +53,17 @@ cmake --build build -j2 --target Dede_VST3
 ```
 
 Formats built are VST3, AU (macOS) and a standalone application.
+
+Releases are cut by pushing a version tag (`git tag v0.1.0 && git push
+--tags`), which builds and publishes Linux, Windows and a macOS universal
+binary. The same workflow can be run by hand from the Actions tab to test the
+builds without publishing anything.
+
+The factory presets in `Source/Assets` are generated, not hand-written:
+
+```sh
+DEDE_ASSETS=Source/Assets python3 tools/make_presets.py
+```
 
 ## Installing
 

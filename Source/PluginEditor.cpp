@@ -50,9 +50,14 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     addAndMakeVisible (topBar);
 
     presetBar.setAccentColour (theme::accent);
+    presetBrowserButton.setTooltip ("Browse, save and delete presets");
+    presetBrowserButton.setColour (juce::TextButton::textColourOffId, theme::accent);
+    presetBrowserButton.onClick = [this] { showPresetBrowser(); };
+
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Dede", helpBody);
-    topBar.setRightControls (&presetBar, 230, &infoButton, 22);
+    topBar.setRightControls ({ { &presetBar, 210 }, { &presetBrowserButton, 26 },
+                               { &infoButton, 22 } });
 
     fxme::SpectrumDisplay::Colours specColours;
     specColours.plotBackground = theme::plotBack;
@@ -260,6 +265,19 @@ void DedeAudioProcessorEditor::showRegionPanel (int slot)
 
     juce::CallOutBox::launchAsynchronously (std::make_unique<RegionPanel> (processor, slot),
                                             area, this);
+}
+
+void DedeAudioProcessorEditor::showPresetBrowser()
+{
+    auto browser = std::make_unique<fxme::PresetComponent> (processor.getPresetManager());
+    browser->setAccentColour (theme::accent);
+    browser->setSize (320, 380);
+
+    juce::CallOutBox::launchAsynchronously (std::move (browser),
+                                            getLocalArea (&topBar,
+                                                          presetBrowserButton.getBounds().toFloat())
+                                                .toNearestInt(),
+                                            this);
 }
 
 //==============================================================================

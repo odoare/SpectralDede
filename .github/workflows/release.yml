@@ -1,0 +1,228 @@
+name: Release
+
+# Cut a release by pushing a version tag (e.g. `git tag v0.1.0 && git push --tags`).
+# `workflow_dispatch` lets you run the three platform builds by hand (from the
+# Actions tab) to test them without publishing — the release job is skipped
+# unless the run was triggered by a tag.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+env:
+  JUCE_VERSION: 8.0.12
+
+jobs:
+  # ── Linux x86_64 ──────────────────────────────────────────────────────────
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev \
+            libcurl4-openssl-dev libwebkit2gtk-4.1-dev
+
+      - uses: actions/checkout@v4
+        with:
+          path: Dede
+          submodules: recursive     # FxmeTools, and WDL nested inside it
+                                    # (verbengine.h, the reverb)
+
+      - uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          ref: ${{ env.JUCE_VERSION }}
+          path: JUCE                 # CMake expects JUCE as a sibling of Dede
+
+      - name: Configure & Build
+        run: |
+          cmake -B Dede/build -S Dede -DCMAKE_BUILD_TYPE=Release
+          # The embedded factory presets link as one blob — build that target
+          # alone first to keep peak RAM down, then the rest.
+          cmake --build Dede/build --config Release --target DedeBinaryData --parallel 1
+          cmake --build Dede/build --config Release --parallel 2
+
+      - name: Package
+        run: |
+          ART=Dede/build/Dede_artefacts/Release
+          mkdir -p staging
+          cp -r "$ART/VST3/Dede.vst3" staging/
+          cp -r "$ART/Standalone/Dede" staging/
+          zip -r ${{ github.workspace }}/Dede-Linux-x86_64.zip staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: Dede-Linux-x86_64.zip
+
+  # ── Windows x86_64 ────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Dede
+          submodules: recursive
+
+      - uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          ref: ${{ env.JUCE_VERSION }}
+          path: JUCE
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure & Build
+        run: |
+          cmake -B Dede/build -S Dede -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build Dede/build --target DedeBinaryData --parallel 1
+          cmake --build Dede/build --parallel
+
+      - name: Package
+        shell: bash
+        run: |
+          ART=Dede/build/Dede_artefacts/Release
+          mkdir -p staging
+          cp -r "$ART/VST3/Dede.vst3" staging/
+          cp -r "$ART/Standalone/Dede.exe" staging/
+          7z a Dede-Windows-x86_64.zip ./staging/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: Dede-Windows-x86_64.zip
+
+  # ── macOS universal (arm64 + x86_64) ──────────────────────────────────────
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Dede
+          submodules: recursive
+
+      - uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          ref: ${{ env.JUCE_VERSION }}
+          path: JUCE
+
+      - name: Configure & Build
+        run: |
+          # Passed explicitly as well as set in CMakeLists: a -D on the command
+          # line is in the cache before any CMakeLists line runs, so it cannot
+          # be missed the way an in-file set() after project() can.
+          cmake -B Dede/build -S Dede \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+          cmake --build Dede/build --config Release --target DedeBinaryData --parallel 1
+          # Capped at 2: the universal build doubles the compile/link load.
+          cmake --build Dede/build --config Release --parallel 2
+
+      # This step has to be able to fail. A verification that only prints
+      # `lipo -info` lets a single-architecture build sail through and ship,
+      # and the runners are Apple Silicon, so the slice that goes missing is
+      # always the one nobody here would notice.
+      - name: Verify universal binaries
+        run: |
+          set -euo pipefail
+          ART=Dede/build/Dede_artefacts/Release
+          status=0
+          for bundle in \
+            "$ART/VST3/Dede.vst3/Contents/MacOS/Dede" \
+            "$ART/AU/Dede.component/Contents/MacOS/Dede" \
+            "$ART/Standalone/Dede.app/Contents/MacOS/Dede"
+          do
+            if [[ ! -f "$bundle" ]]; then
+              echo "::error::missing binary: $bundle"; status=1; continue
+            fi
+            info=$(lipo -info "$bundle")
+            echo "$info"
+            for arch in x86_64 arm64; do
+              if ! grep -qw "$arch" <<< "$info"; then
+                echo "::error::$bundle has no $arch slice"; status=1
+              fi
+            done
+            # Intel users on Catalina need this to be <= 10.15.
+            vtool -show-build "$bundle" | grep -E 'minos|platform' || true
+          done
+          exit $status
+
+      # Ad-hoc signature. Unsigned bundles built on another machine are a
+      # classic "the plugin never appears in the scan": recent macOS refuses to
+      # load them, and AU validation rejects them outright. This is not
+      # notarisation — users still have to clear the download quarantine — but
+      # it removes the failure that costs nothing to remove.
+      - name: Ad-hoc codesign
+        run: |
+          set -euo pipefail
+          ART=Dede/build/Dede_artefacts/Release
+          for bundle in "$ART/VST3/Dede.vst3" "$ART/AU/Dede.component" "$ART/Standalone/Dede.app"; do
+            codesign --force --deep --sign - --timestamp=none "$bundle"
+            codesign --verify --verbose "$bundle"
+          done
+
+      - name: Build pkg installer
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9] ]] || VERSION="0.1.0"   # manual runs have no tag
+          ART=Dede/build/Dede_artefacts/Release
+          mkdir -p pkg_root/Library/Audio/Plug-Ins/VST3
+          mkdir -p pkg_root/Library/Audio/Plug-Ins/Components
+          cp -r "$ART/VST3/Dede.vst3" pkg_root/Library/Audio/Plug-Ins/VST3/
+          cp -r "$ART/AU/Dede.component" pkg_root/Library/Audio/Plug-Ins/Components/
+          pkgbuild \
+            --root pkg_root \
+            --identifier com.FXMechanics.Dede \
+            --version "$VERSION" \
+            --install-location / \
+            Dede-macOS.pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg
+          path: Dede-macOS.pkg
+
+      - name: Package VST3, AU and Standalone zips
+        run: |
+          ART=Dede/build/Dede_artefacts/Release
+          mkdir -p staging
+          cp -r "$ART/VST3/Dede.vst3" staging/
+          cp -r "$ART/AU/Dede.component" staging/
+          cp -r "$ART/Standalone/Dede.app" staging/
+          zip -r ${{ github.workspace }}/Dede-macOS-universal.zip staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-zip
+          path: Dede-macOS-universal.zip
+
+  # ── Publish GitHub Release (tag pushes only) ──────────────────────────────
+  release:
+    needs: [build-linux-x86_64, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.zip
+            artifacts/*.pkg
+          generate_release_notes: true

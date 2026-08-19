@@ -57,6 +57,11 @@ private:
     /** Opens one region's delay settings in a callout anchored on it. */
     void showRegionPanel (int slot);
 
+    /** Opens the full preset browser in a callout under the top bar. The
+        compact strip there only walks the list; saving, renaming and deleting
+        live here. */
+    void showPresetBrowser();
+
     DedeAudioProcessor& processor;
     fxme::FxmeLookAndFeel laf;
 
@@ -76,6 +81,7 @@ private:
     fxme::FxmeSlider widthKnob    { processor.getAPVTS(), dede::ids::revWidth, "Width",   dede::theme::specViolet };
 
     fxme::PresetBarComponent presetBar { processor.getPresetManager() };
+    juce::TextButton presetBrowserButton { "..." };
     fxme::InfoButton infoButton;
 
     // Exactly one per editor, declared after the child components.

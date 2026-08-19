@@ -24,6 +24,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <FxmeTools/dsp/Reverb.h>   // not in the module umbrella: needs WDL
 #include "ParamIDs.h"
 
 //==============================================================================
@@ -132,9 +133,14 @@ private:
         and note modes. */
     void updateDelay (int slot);
 
+    /** One region's send to the reverb as a linear gain, with the bottom of
+        the range read as silence. */
+    float sendLevel (int slot) const;
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
     fxme::StereoCrossDelay delays[dede::maxRegions];
+    fxme::Reverb reverb;
 
     /** The dry path is delayed by the splitter's latency so it stays lined up
         with the regions; the total is then reported to the host, which shifts
@@ -144,8 +150,13 @@ private:
     juce::AudioBuffer<float> monoBuffer;    // 1 channel, the splitter's input
     juce::AudioBuffer<float> regionBuffer;  // stereo, one region's delay output
     juce::AudioBuffer<float> wetBuffer;     // stereo, the summed regions
+    juce::AudioBuffer<float> sendBuffer;    // stereo, what the regions send to the reverb
 
-    juce::SmoothedValue<float> dryGain, wetGain, outGain;
+    juce::SmoothedValue<float> dryGain, wetGain, revGain, outGain;
+
+    /** One smoother per region so a send can be moved while a delay is
+        ringing without stepping the tail. */
+    juce::SmoothedValue<float> sendGain[dede::maxRegions];
 
     std::atomic<double> currentBpm { 120.0 };
     std::atomic<float>  lastNoteHz { 0.0f };

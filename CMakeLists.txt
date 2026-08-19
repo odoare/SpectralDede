@@ -24,11 +24,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # JUCE is expected as a sibling of this repo; FxmeTools lives in-tree as a git
 # submodule under lib/. The module is registered directly rather than through
 # fxmetools_attach: Dede compiles none of the WDL sources. The band splitter
-# runs on juce::dsp::FFT (so its levels match fxme::SpectrumAnalyzer exactly),
-# and the reverb engine it does take from WDL (WDL/verbengine.h) is
-# header-only. The nested WDL submodule still has to be checked out.
+# runs on fxme::RealFft (so its levels match fxme::SpectrumAnalyzer exactly —
+# both use the same transform, whose scaling matches what JUCE's dsp::FFT did
+# before the core split), and the reverb engine it does take from WDL
+# (WDL/verbengine.h) is header-only. The nested WDL submodule still has to be
+# checked out.
+#
+# FxmeTools is split in two: the JUCE module below, and FxmeCore, the JUCE-free
+# half under lib/FxmeTools/core. Core is a second include root for the very
+# same <FxmeTools/...> spelling, so which side a header lives on is invisible
+# here — but the target has to be added, or the headers that moved (the band
+# splitter, the reverb, the spectrum analyzer) are simply not found.
 add_subdirectory(../JUCE JUCE)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/core FxmeCore)
 juce_add_module(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/FxmeTools)
+
+# The module's own sources include core headers, and juce_add_module makes an
+# INTERFACE target whose sources compile into the consumer, so core has to
+# travel with it.
+target_link_libraries(FxmeTools INTERFACE FxmeCore)
 
 juce_add_plugin(Dede
     COMPANY_NAME                "FX-Mechanics"
@@ -101,6 +115,7 @@ target_compile_definitions(Dede
 target_link_libraries(Dede
     PRIVATE
         FxmeTools
+        FxmeCore
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
