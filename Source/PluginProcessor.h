@@ -95,6 +95,7 @@ private:
         std::atomic<float>* fbL   = nullptr;
         std::atomic<float>* fbR   = nullptr;
         std::atomic<float>* fbX   = nullptr;
+        std::atomic<float>* dly   = nullptr;
         std::atomic<float>* send  = nullptr;
     };
 
@@ -139,6 +140,10 @@ private:
         the range read as silence. */
     float sendLevel (int slot) const;
 
+    /** One region's delay output into the mix as a linear gain, with the
+        bottom of the range read as silence. */
+    float delayLevel (int slot) const;
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
     fxme::StereoCrossDelay delays[dede::maxRegions];
@@ -159,6 +164,7 @@ private:
     /** One smoother per region so a send can be moved while a delay is
         ringing without stepping the tail. */
     juce::SmoothedValue<float> sendGain[dede::maxRegions];
+    juce::SmoothedValue<float> delayGain[dede::maxRegions];
 
     std::atomic<double> currentBpm { 120.0 };
     std::atomic<float>  lastNoteHz { 0.0f };

@@ -5,7 +5,8 @@
     The settings of one region's delay, shown in a callout when its rectangle
     is clicked on the spectrum view: the two delay times and how they are read
     (seconds, host tempo, or the last MIDI note), the three feedback gains, and
-    the send to the shared reverb.
+    the two levels the repeats leave with: into the mix (Delay) and into the
+    shared reverb (Reverb), independent of each other.
 
     Everything a region does to the spectrum itself (its borders, its gate, its
     gain and pan) is set by dragging on the view, so none of it appears here.
@@ -49,7 +50,7 @@ private:
     const int slot;
     const juce::Colour accent;
 
-    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, send;
+    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, delayLevel, send;
     juce::ComboBox modeBox;
     std::unique_ptr<ComboBoxAttachment> modeAttachment;
 

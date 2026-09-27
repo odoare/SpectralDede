@@ -20,7 +20,7 @@ namespace
     constexpr int knobHeight  = 82;
     constexpr int footerHeight = 24;
     constexpr int knobWidth   = 74;
-    constexpr int numKnobs    = 6;
+    constexpr int numKnobs    = 7;
     constexpr int panelMargin = 8;
 }
 
@@ -32,6 +32,7 @@ RegionPanel::RegionPanel (DedeAudioProcessor& p, int regionSlot)
     fbL   = makeKnob (ids::rgFbL,   "Fb L");
     fbR   = makeKnob (ids::rgFbR,   "Fb R");
     fbX   = makeKnob (ids::rgFbX,   "Cross");
+    delayLevel = makeKnob (ids::rgDly, "Delay");
     send  = makeKnob (ids::rgSend,  "Reverb");
 
     modeBox.addItem ("Seconds",   1);
@@ -135,7 +136,7 @@ void RegionPanel::resized()
 
     auto knobs = area.removeFromTop (knobHeight);
     fxme::FxmeSlider* const row[] { timeL.get(), timeR.get(), fbL.get(),
-                                    fbR.get(), fbX.get(), send.get() };
+                                    fbR.get(), fbX.get(), delayLevel.get(), send.get() };
 
     const int w = knobs.getWidth() / numKnobs;
     for (auto* k : row)

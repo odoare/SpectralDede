@@ -171,6 +171,13 @@ DedeAudioProcessor::createParameterLayout()
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
+        // The region's repeats into the mix, independent of its reverb send:
+        // with this down and the send up, a region feeds the reverb only.
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgDly), 1 }, slot + "Delay Level",
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
+
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgSend), 1 }, slot + "Reverb Send",
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
@@ -235,6 +242,7 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.fbL   = raw (ids::region (i, ids::rgFbL));
         r.fbR   = raw (ids::region (i, ids::rgFbR));
         r.fbX   = raw (ids::region (i, ids::rgFbX));
+        r.dly   = raw (ids::region (i, ids::rgDly));
         r.send  = raw (ids::region (i, ids::rgSend));
     }
 }
@@ -284,6 +292,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     {
         sendGain[i].reset (sampleRate, 0.02);
         sendGain[i].setCurrentAndTargetValue (sendLevel (i));
+        delayGain[i].reset (sampleRate, 0.02);
+        delayGain[i].setCurrentAndTargetValue (delayLevel (i));
     }
 }
 
@@ -377,6 +387,12 @@ float DedeAudioProcessor::sendLevel (int slot) const
     return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
 }
 
+float DedeAudioProcessor::delayLevel (int slot) const
+{
+    const float db = regions[slot].dly->load();
+    return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
+}
+
 void DedeAudioProcessor::updateDelay (int slot)
 {
     const auto& r = regions[slot];
@@ -433,14 +449,16 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
                            regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
                            numSamples);
 
-        // The send is taken after the delay, so what reaches the reverb is the
-        // region's repeats rather than its dry band.
+        // The region's repeats go two ways, each with its own level: into the
+        // mix (the delay level) and into the reverb (the send). The send is
+        // taken after the delay, so what reaches the reverb is the region's
+        // repeats rather than its dry band, and it does not follow the delay
+        // level: a region can feed the reverb alone.
+        delayGain[i].setTargetValue (delayLevel (i));
         sendGain[i].setTargetValue (sendLevel (i));
 
-        for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::add (wetBuffer.getWritePointer (ch),
-                                              regionBuffer.getReadPointer (ch), numSamples);
-
+        auto* wetL  = wetBuffer.getWritePointer (0);
+        auto* wetR  = wetBuffer.getWritePointer (1);
         auto* sendL = sendBuffer.getWritePointer (0);
         auto* sendR = sendBuffer.getWritePointer (1);
         const auto* regL = regionBuffer.getReadPointer (0);
@@ -448,7 +466,10 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
         for (int s = 0; s < numSamples; ++s)
         {
+            const float d = delayGain[i].getNextValue();
             const float g = sendGain[i].getNextValue();
+            wetL[s]  += regL[s] * d;
+            wetR[s]  += regR[s] * d;
             sendL[s] += regL[s] * g;
             sendR[s] += regR[s] * g;
         }

@@ -160,8 +160,10 @@ Per region: `on`, `flo`, `fhi` (band borders, logarithmic 20 Hz to 20 kHz),
 `gate` (dB, at its minimum the region is fully open), `ceil` (dB, same range
 as the gate, at its maximum it is off), `gain` (dB), `pan`,
 `timel`, `timer` (0.001 to 3, meaning set by the mode), `mode` (seconds, DAW
-sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `send`
-(dB, to the reverb).
+sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `dly`
+(dB, the region's repeats into the mix, default 0 dB) and `send` (dB, the same
+repeats to the reverb). The two are independent: with `dly` at its minimum and
+`send` up, a region feeds the reverb only.
 
 A slot's default band is the audible range cut into eight equal frequency
 ratios, so a freshly enabled slot is never degenerate.

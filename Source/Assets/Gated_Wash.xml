@@ -22,6 +22,7 @@
   <PARAM id="rg0_fbl" value="-6"/>
   <PARAM id="rg0_fbr" value="-6"/>
   <PARAM id="rg0_fbx" value="-14"/>
+  <PARAM id="rg0_dly" value="0"/>
   <PARAM id="rg0_send" value="-3"/>
   <PARAM id="rg1_on" value="0"/>
   <PARAM id="rg1_flo" value="47.427474"/>
@@ -36,6 +37,7 @@
   <PARAM id="rg1_fbl" value="-12"/>
   <PARAM id="rg1_fbr" value="-12"/>
   <PARAM id="rg1_fbx" value="-60"/>
+  <PARAM id="rg1_dly" value="0"/>
   <PARAM id="rg1_send" value="-60"/>
   <PARAM id="rg2_on" value="0"/>
   <PARAM id="rg2_flo" value="112.468265"/>
@@ -50,6 +52,7 @@
   <PARAM id="rg2_fbl" value="-12"/>
   <PARAM id="rg2_fbr" value="-12"/>
   <PARAM id="rg2_fbx" value="-60"/>
+  <PARAM id="rg2_dly" value="0"/>
   <PARAM id="rg2_send" value="-60"/>
   <PARAM id="rg3_on" value="0"/>
   <PARAM id="rg3_flo" value="266.704286"/>
@@ -64,6 +67,7 @@
   <PARAM id="rg3_fbl" value="-12"/>
   <PARAM id="rg3_fbr" value="-12"/>
   <PARAM id="rg3_fbx" value="-60"/>
+  <PARAM id="rg3_dly" value="0"/>
   <PARAM id="rg3_send" value="-60"/>
   <PARAM id="rg4_on" value="0"/>
   <PARAM id="rg4_flo" value="632.455532"/>
@@ -78,6 +82,7 @@
   <PARAM id="rg4_fbl" value="-12"/>
   <PARAM id="rg4_fbr" value="-12"/>
   <PARAM id="rg4_fbx" value="-60"/>
+  <PARAM id="rg4_dly" value="0"/>
   <PARAM id="rg4_send" value="-60"/>
   <PARAM id="rg5_on" value="0"/>
   <PARAM id="rg5_flo" value="1499.788419"/>
@@ -92,6 +97,7 @@
   <PARAM id="rg5_fbl" value="-12"/>
   <PARAM id="rg5_fbr" value="-12"/>
   <PARAM id="rg5_fbx" value="-60"/>
+  <PARAM id="rg5_dly" value="0"/>
   <PARAM id="rg5_send" value="-60"/>
   <PARAM id="rg6_on" value="0"/>
   <PARAM id="rg6_flo" value="3556.55882"/>
@@ -106,6 +112,7 @@
   <PARAM id="rg6_fbl" value="-12"/>
   <PARAM id="rg6_fbr" value="-12"/>
   <PARAM id="rg6_fbx" value="-60"/>
+  <PARAM id="rg6_dly" value="0"/>
   <PARAM id="rg6_send" value="-60"/>
   <PARAM id="rg7_on" value="0"/>
   <PARAM id="rg7_flo" value="8433.930069"/>
@@ -120,5 +127,6 @@
   <PARAM id="rg7_fbl" value="-12"/>
   <PARAM id="rg7_fbr" value="-12"/>
   <PARAM id="rg7_fbx" value="-60"/>
+  <PARAM id="rg7_dly" value="0"/>
   <PARAM id="rg7_send" value="-60"/>
 </Parameters>
