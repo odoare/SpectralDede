@@ -294,7 +294,8 @@ resonances without leaving holes) could come later as a per-region choice.
 
 ### 10. Hover highlight on the region handles
 
-*Not mandatory. Small, and worth doing before item 9.*
+*Implemented 2026-09-27 in FxmeTools (`SpectrumRegionEditor`), pending test in
+Dede. Remove this item once tested and committed.*
 
 When the pointer is over a handle, draw that handle highlighted, so it is clear
 which one a press will grab. This matters most when lines are close (gate,
