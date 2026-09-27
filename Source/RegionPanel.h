@@ -13,6 +13,9 @@
       - Degrade: the region's band through saturation, bit-crush and
         downsampling, each with its own switch, before it is panned and
         reaches both its Dry output and its delay.
+      - Spectral: pitch shift (fractional semitones), freeze (tonal or wash)
+        and blur, each with its own switch, done inside the splitter's frame
+        before the band leaves it (so before the degrade chain).
 
     Everything a region does to the spectrum itself (its borders, its gate and
     ceiling, its gain and pan) is set by dragging on the view, so none of it
@@ -47,7 +50,7 @@ public:
 
 private:
     class DelayPage;
-    class DegradePage;
+    class StagesPage;
     class Tabs;
 
     const int slot;

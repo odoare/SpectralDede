@@ -106,6 +106,13 @@ private:
         std::atomic<float>* crushBits = nullptr;
         std::atomic<float>* dsOn      = nullptr;
         std::atomic<float>* dsFactor  = nullptr;
+
+        std::atomic<float>* pitchOn    = nullptr;
+        std::atomic<float>* pitchSt    = nullptr;
+        std::atomic<float>* freezeOn   = nullptr;
+        std::atomic<float>* freezeMode = nullptr;
+        std::atomic<float>* blurOn     = nullptr;
+        std::atomic<float>* blurMs     = nullptr;
     };
 
     void cacheParameterPointers();
@@ -166,6 +173,10 @@ private:
 
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
+
+    /** Pitch, freeze and blur, run by the splitter inside its frames (it is
+        installed as the splitter's band processor in the constructor). */
+    fxme::SpectralBandEffects spectral;
     fxme::StereoCrossDelay delays[dede::maxRegions];
 
     // Degrade chain, one set per region. The band is mono at that point (the

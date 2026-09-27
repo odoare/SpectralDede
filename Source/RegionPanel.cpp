@@ -166,35 +166,65 @@ private:
 };
 
 //==============================================================================
-/** The region's degrade chain: three stages side by side, in signal order,
-    each headed by its own switch. */
-class RegionPanel::DegradePage : public juce::Component,
-                                 private juce::Timer
+/** A page of switchable stages side by side, each a column headed by its own
+    on/off switch over its controls (knobs and choice boxes). The controls of a
+    stage that is off are dimmed but stay editable, so a stage can be set up
+    before it is heard. Both the Degrade and the Spectral tabs are one. */
+class RegionPanel::StagesPage : public juce::Component,
+                                private juce::Timer
 {
 public:
-    DegradePage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour)
+    /** One control of a stage: a knob, or a choice box when `choices` is set. */
+    struct Control
+    {
+        const char* suffix;
+        juce::String label;
+        const juce::StringArray* choices = nullptr;
+    };
+
+    /** One stage: its switch, its title, and its controls. */
+    struct Stage
+    {
+        const char* onSuffix;
+        juce::String title;
+        std::vector<Control> controls;
+    };
+
+    StagesPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour,
+                const std::vector<Stage>& stageSpecs)
         : processor (p), slot (regionSlot)
     {
         auto& apvts = processor.getAPVTS();
 
-        satOn   = std::make_unique<fxme::FxmeButton> (apvts, ids::region (slot, ids::rgSatOn),
-                                                      "Saturation", accentColour);
-        crushOn = std::make_unique<fxme::FxmeButton> (apvts, ids::region (slot, ids::rgCrushOn),
-                                                      "Bit-crush", accentColour);
-        dsOn    = std::make_unique<fxme::FxmeButton> (apvts, ids::region (slot, ids::rgDsOn),
-                                                      "Downsample", accentColour);
-        for (auto* b : { satOn.get(), crushOn.get(), dsOn.get() })
-            addAndMakeVisible (*b);
+        for (const auto& spec : stageSpecs)
+        {
+            auto stage = std::make_unique<StageUi>();
+            stage->onSuffix = spec.onSuffix;
+            stage->onSwitch = std::make_unique<fxme::FxmeButton> (
+                apvts, ids::region (slot, spec.onSuffix), spec.title, accentColour);
+            addAndMakeVisible (*stage->onSwitch);
 
-        satDrive = makeKnob (*this, processor, slot, ids::rgSatDrive, "Drive", accentColour);
-        bits     = makeKnob (*this, processor, slot, ids::rgCrushBits, "Bits", accentColour);
-        factor   = makeKnob (*this, processor, slot, ids::rgDsFactor, "Factor", accentColour);
+            for (const auto& c : spec.controls)
+            {
+                if (c.choices != nullptr)
+                {
+                    auto box = std::make_unique<juce::ComboBox>();
+                    box->addItemList (*c.choices, 1);
+                    theme::styleCombo (*box, accentColour);
+                    addAndMakeVisible (*box);
+                    stage->attachments.push_back (std::make_unique<ComboBoxAttachment> (
+                        apvts, ids::region (slot, c.suffix), *box));
+                    stage->controls.push_back (std::move (box));
+                }
+                else
+                {
+                    stage->controls.push_back (makeKnob (*this, processor, slot, c.suffix,
+                                                         c.label, accentColour));
+                }
+            }
 
-        satModel.addItemList (saturationModelNames, 1);
-        theme::styleCombo (satModel, accentColour);
-        addAndMakeVisible (satModel);
-        satModelAttachment = std::make_unique<ComboBoxAttachment> (
-            apvts, ids::region (slot, ids::rgSatModel), satModel);
+            stages.push_back (std::move (stage));
+        }
 
         updateIdleStages();
         startTimerHz (10);
@@ -202,7 +232,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        // Thin separators between the three stages.
+        // Thin separators between the stages.
         g.setColour (theme::panelLine);
         for (auto x : separators)
             g.fillRect (juce::Rectangle<float> ((float) x, (float) pagePadding + 4.0f,
@@ -214,60 +244,70 @@ public:
         auto area = getLocalBounds();
         area.removeFromTop (pagePadding);
 
-        // Saturation has two controls (model and drive), the others one: four
-        // equal units, two of them for saturation.
-        const int unit = area.getWidth() / 4;
-        auto sat   = area.removeFromLeft (2 * unit);
-        auto crush = area.removeFromLeft (unit);
-        auto ds    = area;
+        // Every control gets the same width, so a stage with two controls is
+        // twice as wide as one with one.
+        int totalControls = 0;
+        for (const auto& stage : stages)
+            totalControls += juce::jmax (1, (int) stage->controls.size());
 
-        separators = { crush.getX(), ds.getX() };
-
+        const int unit = area.getWidth() / juce::jmax (1, totalControls);
         constexpr int switchHeight = 22;
 
-        const auto layStage = [switchHeight] (juce::Rectangle<int> column, juce::Component& sw)
+        separators.clear();
+        for (size_t i = 0; i < stages.size(); ++i)
         {
-            sw.setBounds (column.removeFromTop (switchHeight).reduced (6, 0));
-            return column;
-        };
+            auto& stage = *stages[i];
+            const int n = juce::jmax (1, (int) stage.controls.size());
+            auto column = i + 1 == stages.size() ? area : area.removeFromLeft (n * unit);
 
-        auto satBody = layStage (sat, *satOn);
-        satModel.setBounds (satBody.removeFromLeft (satBody.getWidth() / 2)
-                                   .withSizeKeepingCentre (110, 20));
-        satDrive->setBounds (satBody.reduced (3));
+            if (i > 0)
+                separators.push_back (column.getX());
 
-        bits->setBounds (layStage (crush, *crushOn).reduced (3));
-        factor->setBounds (layStage (ds, *dsOn).reduced (3));
+            stage.onSwitch->setBounds (column.removeFromTop (switchHeight).reduced (6, 0));
+
+            for (auto& c : stage.controls)
+            {
+                auto cell = column.removeFromLeft (unit);
+                if (dynamic_cast<juce::ComboBox*> (c.get()) != nullptr)
+                    c->setBounds (cell.withSizeKeepingCentre (juce::jmin (110, cell.getWidth() - 8), 20));
+                else
+                    c->setBounds (cell.reduced (3));
+            }
+        }
     }
 
 private:
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+
+    struct StageUi
+    {
+        const char* onSuffix = nullptr;
+        std::unique_ptr<fxme::FxmeButton> onSwitch;
+        std::vector<std::unique_ptr<juce::Component>> controls;
+        std::vector<std::unique_ptr<ComboBoxAttachment>> attachments;
+    };
 
     void timerCallback() override { updateIdleStages(); }
 
     /** Dims the controls of every stage that is switched off. */
     void updateIdleStages()
     {
-        const auto dim = [this] (const char* onSuffix, std::initializer_list<juce::Component*> controls)
+        for (auto& stage : stages)
         {
-            const float alpha = parameterValue (processor, slot, onSuffix) > 0.5f ? 1.0f : idleAlpha;
-            for (auto* c : controls)
+            const float alpha = parameterValue (processor, slot, stage->onSuffix) > 0.5f ? 1.0f
+                                                                                          : idleAlpha;
+            for (auto& c : stage->controls)
                 if (c->getAlpha() != alpha)
                     c->setAlpha (alpha);
-        };
-
-        dim (ids::rgSatOn,   { &satModel, satDrive.get() });
-        dim (ids::rgCrushOn, { bits.get() });
-        dim (ids::rgDsOn,    { factor.get() });
+        }
     }
 
     DedeAudioProcessor& processor;
     const int slot;
 
-    std::unique_ptr<fxme::FxmeButton> satOn, crushOn, dsOn;
-    std::unique_ptr<fxme::FxmeSlider> satDrive, bits, factor;
-    juce::ComboBox satModel;
-    std::unique_ptr<ComboBoxAttachment> satModelAttachment;
+    // Attachments are declared inside each StageUi after its controls, so they
+    // are destroyed first, while the controls they attach to still exist.
+    std::vector<std::unique_ptr<StageUi>> stages;
     std::vector<int> separators;
 };
 
@@ -315,7 +355,26 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     bar.setColour (juce::TabbedButtonBar::frontOutlineColourId, accent.withAlpha (0.7f));
 
     tabs->addTab ("Delay",   theme::panel, new DelayPage   (processor, slot, accent), true);
-    tabs->addTab ("Degrade", theme::panel, new DegradePage (processor, slot, accent), true);
+    using Stage = StagesPage::Stage;
+
+    // The band before its delay, in signal order: saturation, bit-crush,
+    // downsample.
+    const std::vector<Stage> degrade {
+        { ids::rgSatOn,   "Saturation", { { ids::rgSatModel,  "Model", &saturationModelNames },
+                                          { ids::rgSatDrive,  "Drive" } } },
+        { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } } },
+        { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } } },
+    };
+
+    // Inside the splitter's frame: freeze or blur, then pitch.
+    const std::vector<Stage> spectralStages {
+        { ids::rgPitchOn,  "Pitch",  { { ids::rgPitchSt,    "Semitones" } } },
+        { ids::rgFreezeOn, "Freeze", { { ids::rgFreezeMode, "Mode", &freezeModeNames } } },
+        { ids::rgBlurOn,   "Blur",   { { ids::rgBlurMs,     "Time" } } },
+    };
+
+    tabs->addTab ("Degrade",  theme::panel, new StagesPage (processor, slot, accent, degrade), true);
+    tabs->addTab ("Spectral", theme::panel, new StagesPage (processor, slot, accent, spectralStages), true);
 
     tabs->setCurrentTabIndex (juce::jlimit (0, tabs->getNumTabs() - 1, wanted));
     tabs->tracking = true;

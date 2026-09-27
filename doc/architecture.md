@@ -78,6 +78,16 @@ lines, for instance the quiet tails and room of a sound without its loud
 notes. A global knee turns both switches into smooth transitions a given
 number of dB wide.
 
+Each region can also be transformed inside the frame, before it leaves the
+splitter: **pitch shift** (fractional semitones), **freeze** (tonal, or a
+random-phase wash) and **blur** (magnitudes smoothed over time), by
+`fxme::SpectralBandEffects`, installed as the splitter's band processor. They
+share one phase vocoder (frequency tracking once per hop, for every region),
+cost no extra transform and add no latency. Order per region: gate and
+ceiling, then freeze or blur, then pitch. A region with all three off is left
+untouched bit for bit. The spectral transforms come *before* the degrade
+chain, which works on the region's time-domain output.
+
 Three consequences shape the rest of the design:
 
 - Everything spectral happens on the mono sum of the input. The spectrum view
@@ -105,8 +115,12 @@ Anything not specific to Dede goes into the `lib/FxmeTools` submodule under
 FxmeTools (new or extended, see the steps above):
 
 - `dsp/SpectralBandSplitter.h` — the STFT band split with per-band spectral
-  gate, gain and pan. Added in step 2, and part of the module umbrella header
-  (it runs on `juce::dsp::FFT` and needs nothing outside JUCE).
+  gate, gain and pan. Added in step 2, and part of the module umbrella header;
+  now in FxmeTools core, on `fxme::RealFft` (WDL's real FFT). Later: a
+  ceiling and a knee, an unpanned output option, and a per-band processor
+  hook (`SpectralBandProcessor`).
+- `dsp/SpectralBandEffects.h` — pitch, freeze and blur as such a processor,
+  on a shared phase vocoder. Core, header-only, in the module umbrella.
 - `components/SpectrumDisplay.h` — extended in step 3, backward compatibly:
   `getPlotArea`, `freqToX`, `xToFreq`, `dbToY`, `yToDb`, `overBadge` and
   `overLegend` moved from private to protected, two paint hooks
@@ -190,6 +204,11 @@ Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
 `satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,
 default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4). All
 stages default to off.
+
+Spectral, per region: `pshon`, `pshst` (-24 to +24 semitones, 0.01 steps),
+`frzon` (latched: captures the region's spectrum when switched on), `frzmod`
+(Tonal, Wash), `blron`, `blrms` (20 ms to 5 s, logarithmic, default 300 ms).
+All off by default.
 
 A slot's default band is the audible range cut into eight equal frequency
 ratios, so a freshly enabled slot is never degenerate.

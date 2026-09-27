@@ -138,7 +138,9 @@ exists.
    `juce::AsyncUpdater`). In `handleAsyncUpdate()`, on the message thread:
    `suspendProcessing (true)` (it takes the callback lock, so no block is in
    flight), re-prepare the splitter at the new order with the current sample
-   rate and block size, re-prepare and re-delay `dryDelay`, call
+   rate and block size, then `spectral.prepare()` from the splitter's new FFT
+   and hop sizes (the pitch, freeze and blur state is sized from them, see
+   item 13 in `done.md`), re-prepare and re-delay `dryDelay`, call
    `setLatencySamples()`, then `suspendProcessing (false)`. Skip it if the
    order did not actually change, and if `prepareToPlay` has not run yet. The
    band settings survive because `updateBands()` re-sends every band each block
@@ -211,71 +213,9 @@ setter), so it needs a core test and an `api-changes.md` entry. Costs one
 multiply-add per bin per region per hop, and it delays the gate's opening on
 attacks by roughly the time constant.
 
-### 13. Spectral transforms tab
-
-*Not mandatory. Planned.*
-
-Adds the third tab of the region popup (items 11 and 12, done, built the tabs
-and the Degrade page: add a `SpectralPage` next to `DelayPage` and
-`DegradePage` in `Source/RegionPanel.cpp`).
-
-Three effects that work on each region's spectrum inside the splitter's frame,
-where the FFT is already paid for: **pitch shift**, **freeze** and **blur**.
-They share one piece of machinery, a phase vocoder (per-bin frequency tracking
-from the phase advance between hops), which is why they belong together.
-
-**Why spectral and not a time-domain shifter.** Sliding the bins by a fixed
-number is a frequency shift (every partial moves by the same number of Hz,
-harmonics become inharmonic), not a pitch shift. A pitch shift scales bin
-positions (bin k goes to k x ratio) and advances each output bin's phase at
-the shifted frequency. Done this way:
-
-- any ratio works: `ratio = 2^(semitones / 12)`, with semitones as a float
-  (for example -24 to +24, 0.01 steps), so non-integer intervals and detunes
-  are natural;
-- no added latency, and little cost: the frequency analysis is done once per
-  hop for the whole input (every region shares it), then each region keeps
-  one synthesis phase per bin;
-- freeze and blur need the same phase tracking.
-
-Limits to know: a phase vocoder adds some phasiness and softens transients,
-more so at the splitter's 75% overlap, which is the minimum usable for it.
-Phase locking (keeping each peak's neighbouring bins phase-coherent with the
-peak, Laroche and Dolson) improves it noticeably and should be part of the
-first version. The shift applies once, before the delay, so every repeat has
-the same pitch (a climbing shimmer is item 13b).
-
-**Effects and parameters (per region).**
-
-- *Pitch:* on, semitones (float). Shifted content leaves the region's range
-  (a 1 to 2 kHz region up an octave comes out at 2 to 4 kHz); that is fine,
-  each region has its own output.
-- *Freeze:* on (latched). Holds the region's magnitudes as they are when it is
-  switched on (after the gate, so it captures what the view shows) and keeps
-  advancing the phases, either at the tracked frequencies (tonal) or randomly
-  per hop (a smooth wash, the approach of `fxme::SpectralFreeze`, including its
-  deterministic `detrand` phase stream). A mode parameter chooses. Reuse the
-  approach, not the class: `SpectralFreeze` runs its own FFT. MIDI triggering
-  (the plugin already receives MIDI) is a possible later addition.
-- *Blur:* on, time (ms). Smooths each bin's magnitude over hops, with the
-  tracked phases, so it sounds like a reverb confined to the band rather than
-  a smear.
-
-Order inside the frame, per region: gate and ceiling -> freeze or
-blur (magnitudes) -> pitch (remapping) -> inverse FFT.
-
-**Structure (FxmeTools core).** Do not grow `SpectralBandSplitter` with all of
-this. Add a class, for example `fxme::SpectralBandEffects`: `prepare (numBins,
-hop, sampleRate, numBands)` (allocates), `analyse (spectrum)` once per hop,
-`processBand (band, frame)` per region. The splitter gets a hook to call it
-between the gate and the inverse FFT (a pointer to an interface, no
-`std::function` on the audio thread). Testable on its own: a sine shifted by
-a known ratio lands at the expected frequency, freeze holds a steady spectrum,
-blur of a steady signal is a no-op. `api-changes.md` entry.
-
 ### 13b. Shimmer (pitch shift inside the delay feedback)
 
-*Optional. Only after items 12 and 13.*
+*Optional. Items 12 and 13, its prerequisites, are done.*
 
 The classic shimmer: each repeat comes back shifted again (typically an
 octave up), so the repeats climb. This cannot be the spectral shifter of item

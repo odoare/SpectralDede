@@ -4,6 +4,73 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 13. Spectral transforms tab: pitch, freeze, blur (2026-09-27)
+
+A third tab in the region popup, **Spectral**, with three effects that work on
+the region's spectrum inside the splitter's frame, where the FFT is already
+paid for: no extra transform, no added latency. Each has its own switch, all
+off by default. A region with all three off is left untouched bit for bit.
+
+| Effect | Parameters | What it does |
+|---|---|---|
+| Pitch | `pshon`, `pshst` (-24 to +24 semitones, 0.01 steps) | Moves the region's partials by the ratio; fractional semitones work, harmonics stay harmonic |
+| Freeze | `frzon` (latched), `frzmod` (Tonal, Wash) | Captures the region's spectrum (after its gate) when switched on and holds it, ignoring the input. Tonal keeps notes as notes; Wash is a smooth random-phase texture |
+| Blur | `blron`, `blrms` (20 ms to 5 s, log, default 300 ms) | Smooths each bin's level over time: a reverb-like tail confined to the region |
+
+Order per region: gate and ceiling, then freeze or blur (freeze wins when both
+are on), then pitch, then out of the splitter into the degrade chain, the pan
+and the delay.
+
+**FxmeTools (core).**
+
+- A hook in `SpectralBandSplitter`: the `SpectralBandProcessor` interface
+  (`beginFrame` once per hop with the whole spectrum, `processBand` per band
+  between the gate and the inverse FFT), installed with `setBandProcessor`.
+- `SpectralBandEffects` (new, header-only, in the module umbrella): one phase
+  vocoder shared by every band (frequency tracking once per hop), then per
+  band freeze, blur and pitch, and a resynthesis with identity phase locking.
+- New test `core/tests/CoreSpectralEffectsTests.cpp`, 23 checks.
+
+**Decisions and findings while implementing.**
+
+- **Pitch shifts peak regions, not bins.** Moving each bin to
+  `round (k * ratio)` tears a partial's three-bin lobe apart for non-integer
+  ratios (it lost 2 dB at +7 st and 4 dB at +3.33 st). Instead, each peak and
+  the bins around it move together by one whole number of bins, and the exact
+  new frequency comes from the peak's phase advance (Laroche and Dolson).
+  Tested level change is now under 0.7 dB, and the frequency is exact to the
+  0.1 Hz for tones on a bin and between two bins, up and down.
+- **Blur tails.** Once the input stops, the analysis only sees silence: its
+  frequencies are noise and its phases all zero, which pushed the tail to the
+  edges of each frame, where the synthesis window removed it. Blur now holds
+  each bin's last reliable frequency (while the live level is under a quarter
+  of the blurred one) and uses the phase pattern a steady partial has in this
+  window (neighbouring bins pi apart). A 500 ms blur keeps a stopped tone
+  sounding, as it should.
+- **One hop of pass-through when the effects wake up.** Frequencies need two
+  consecutive analysed hops; a tonal freeze captured on the first would hold
+  notes up to half a bin (about 12 Hz) out of tune. So a band stays untouched
+  for that one hop (about 11 ms).
+- **Wash level.** Random phases make overlapping frames add as powers, not
+  amplitudes; a gain computed from the window (2 at 75% overlap) restores the
+  level (tested within 0.1 dB of the live tone). The phase stream is
+  deterministic (`fxme::detrand`, keyed on band, frame and bin), so a wash
+  reproduces exactly.
+- Freeze is a latched parameter, so it is automatable and saved; MIDI
+  triggering stays a possible later addition.
+
+**Dede.**
+
+- The Degrade page became a generic `StagesPage` (a row of stages, each a
+  switch over its controls), built from a list for both the Degrade and the
+  Spectral tabs.
+- `updateBands()` passes each region's settings to the effects every block;
+  `prepareToPlay` prepares them from the splitter's FFT and hop sizes.
+- Factory presets carry the six new parameters at their defaults (240
+  parameters each); `architecture.md` and the help text are updated. Item 6
+  (FFT size as a parameter) now notes that the effects must be re-prepared
+  with the splitter.
+
 ## Region output levels: Dry, Delay, and a post-level reverb send (2026-09-27)
 
 Not a todo item: decided in discussion. A region is now a small channel strip.

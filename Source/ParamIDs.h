@@ -85,6 +85,14 @@ namespace ids
     inline constexpr const char* rgDsOn     = "dson";    // bool
     inline constexpr const char* rgDsFactor = "dsf";     // hold length, 1..1024
 
+    // Spectral transforms (pitch, freeze, blur), per region.
+    inline constexpr const char* rgPitchOn  = "pshon";   // bool
+    inline constexpr const char* rgPitchSt  = "pshst";   // semitones, fractional
+    inline constexpr const char* rgFreezeOn = "frzon";   // bool, latched
+    inline constexpr const char* rgFreezeMode = "frzmod"; // FreezeMode choice
+    inline constexpr const char* rgBlurOn   = "blron";   // bool
+    inline constexpr const char* rgBlurMs   = "blrms";   // ms
+
     /** The APVTS id of region slot `slot`'s `suffix` parameter. */
     inline juce::String region (int slot, const char* suffix)
     {
@@ -128,6 +136,16 @@ inline constexpr float maxDownsample     = 1024.0f;
 
 /** Order of the saturation model choice; matches fxme::Saturator::Model. */
 inline const juce::StringArray saturationModelNames { "Standard", "Dynamic", "Triode", "Class AB" };
+
+/** Spectral transforms. Pitch in semitones, fractional; blur as the time
+    constant of the magnitude smoothing. */
+inline constexpr float maxPitchSemitones = 24.0f;
+inline constexpr float minBlurMs = 20.0f;
+inline constexpr float maxBlurMs = 5000.0f;
+inline constexpr float defaultBlurMs = 300.0f;
+
+/** Order of the freeze mode choice; matches fxme::SpectralBandEffects::FreezeMode. */
+inline const juce::StringArray freezeModeNames { "Tonal", "Wash" };
 
 inline constexpr float minDelayValue = 0.001f;
 inline constexpr float maxDelayValue = 3.0f;

@@ -221,6 +221,33 @@ DedeAudioProcessor::createParameterLayout()
             logRange (1.0f, maxDownsample), 4.0f,
             AudioParameterFloatAttributes().withStringFromValueFunction (
                 [] (float x, int) { return "x" + String (x, x < 10.0f ? 2 : 1); })));
+
+        // ---- Spectral transforms: pitch, freeze, blur, all off ----------------
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgPitchOn), 1 }, slot + "Pitch On", false));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgPitchSt), 1 }, slot + "Pitch",
+            NormalisableRange<float> (-maxPitchSemitones, maxPitchSemitones, 0.01f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return (x > 0.0f ? "+" : "") + String (x, 2) + " st"; })));
+
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgFreezeOn), 1 }, slot + "Freeze", false));
+
+        layout.add (std::make_unique<AudioParameterChoice> (
+            ParameterID { id (ids::rgFreezeMode), 1 }, slot + "Freeze Mode",
+            freezeModeNames, 0));
+
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgBlurOn), 1 }, slot + "Blur On", false));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgBlurMs), 1 }, slot + "Blur Time",
+            logRange (minBlurMs, maxBlurMs), defaultBlurMs,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return x >= 1000.0f ? String (x / 1000.0f, 2) + " s"
+                                                        : String (juce::roundToInt (x)) + " ms"; })));
     }
 
     return layout;
@@ -243,6 +270,7 @@ DedeAudioProcessor::DedeAudioProcessor()
 {
     cacheParameterPointers();
     inputTap.setEnabled (true);
+    splitter.setBandProcessor (&spectral);
 }
 
 DedeAudioProcessor::~DedeAudioProcessor() = default;
@@ -292,6 +320,13 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.crushBits = raw (ids::region (i, ids::rgCrushBits));
         r.dsOn     = raw (ids::region (i, ids::rgDsOn));
         r.dsFactor = raw (ids::region (i, ids::rgDsFactor));
+
+        r.pitchOn    = raw (ids::region (i, ids::rgPitchOn));
+        r.pitchSt    = raw (ids::region (i, ids::rgPitchSt));
+        r.freezeOn   = raw (ids::region (i, ids::rgFreezeOn));
+        r.freezeMode = raw (ids::region (i, ids::rgFreezeMode));
+        r.blurOn     = raw (ids::region (i, ids::rgBlurOn));
+        r.blurMs     = raw (ids::region (i, ids::rgBlurMs));
     }
 }
 
@@ -305,6 +340,10 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     // Each band leaves the splitter mono (gain applied, no pan) so the degrade
     // chain treats both sides alike; the pan is applied after it, here.
     splitter.setApplyPan (false);
+
+    // Pitch, freeze and blur run inside the splitter's frames, on its window
+    // and hop, so they are prepared from it.
+    spectral.prepare (splitter.getFftSize(), splitter.getHopSize(), sampleRate, maxRegions);
 
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
@@ -372,6 +411,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
 void DedeAudioProcessor::releaseResources()
 {
     splitter.reset();
+    spectral.reset();
     dryDelay.reset();
     reverb.reset();
     for (auto& d : delays)
@@ -454,6 +494,16 @@ void DedeAudioProcessor::updateBands()
                                               : ceilDb;
 
         splitter.setBand (i, band);
+
+        fxme::SpectralBandEffects::Settings fx;
+        fx.pitchOn        = r.pitchOn->load() > 0.5f;
+        fx.pitchSemitones = r.pitchSt->load();
+        fx.freezeOn       = r.freezeOn->load() > 0.5f;
+        fx.freezeMode     = (fxme::SpectralBandEffects::FreezeMode)
+                                juce::jlimit (0, 1, (int) r.freezeMode->load());
+        fx.blurOn         = r.blurOn->load() > 0.5f;
+        fx.blurSeconds    = r.blurMs->load() * 0.001f;
+        spectral.setBand (i, fx);
     }
 }
 
