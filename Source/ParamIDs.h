@@ -72,6 +72,7 @@ namespace ids
     inline constexpr const char* rgFbL   = "fbl";     // dB, left feedback
     inline constexpr const char* rgFbR   = "fbr";     // dB, right feedback
     inline constexpr const char* rgFbX   = "fbx";     // dB, cross feedback
+    inline constexpr const char* rgDry   = "dry";     // dB, the band itself (no delay) into the mix
     inline constexpr const char* rgDly   = "dly";     // dB, delay output into the mix
     inline constexpr const char* rgSend  = "send";    // dB, send to the reverb
 

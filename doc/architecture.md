@@ -27,12 +27,25 @@ stereo delay in three time modes, and a send to a shared reverb.
 ```
                         ┌──────────────── dry ────────────────┐
                         │                                     │
-  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> degrade ──> pan ──> stereo delay 0 ─┐
-                              (STFT)      ├─> region 1 ──> degrade ──> pan ──> stereo delay 1 ─┤
+  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> degrade ──> pan ─┬─> region Dry ───┬─> out
+                              (STFT)      │                                 └─> delay ─> Delay ┤
+                                          ├─> region 1 ── ... (same strip)                     │
                                           └─> ...                                              │
-                                                                                               ├─> out
-                                          per-region sends ──> reverb ─────────────────────────┘
+                                              per-region sends (from Dry + Delay) ──> reverb ──┘
 ```
+
+A region is a small channel strip. Its band, degraded and panned, leaves it two
+ways, each at its own level: as it is, undelayed (the region's **Dry**, off by
+default), and through its delay (**Delay**, 0 dB by default). The reverb send
+is taken from the sum of the two, after their levels, like a post-fader send:
+with Delay at -inf the reverb gets no repeats from that region, and with both
+down it gets nothing from it.
+
+The region's Dry is *added* to the global dry, which stays the untouched
+input: it does not replace that frequency range in it. To hear only the
+processed band, turn the global Dry down (which also removes everything outside
+the regions). The regions' Dry outputs are on a bus of their own, scaled only
+by the output trim, not by the global Dry nor by Delays.
 
 Each region leaves the splitter mono, with its gain applied but not its pan
 (`setApplyPan (false)`). It goes through its degrade chain (saturation, then
@@ -44,14 +57,12 @@ small signals), so the drive knob sets how hard the band clips, not how loud
 it comes out; its bias and sag are fixed per model (sag 0.5 except Standard,
 Class AB with a -0.1 overlap for its crossover notch).
 
-Each region's send is taken after its delay, so what reaches the reverb is the
-region's repeats rather than its dry band. The reverb runs on every block
-whatever the sends are doing, so a tail keeps ringing after the region that fed
-it has been turned down or deleted.
+The reverb runs on every block whatever the sends are doing, so a tail keeps
+ringing after the region that fed it has been turned down or deleted.
 
-The dry signal is never processed: it is the untouched input, level-trimmed.
-Everything the regions do is added on top, so with no region enabled Dede is a
-gain stage.
+The global dry signal is never processed: it is the untouched input,
+level-trimmed. Everything the regions do is added on top, so with no region
+enabled Dede is a gain stage.
 
 ## The spectral stage
 
@@ -170,10 +181,10 @@ Per region: `on`, `flo`, `fhi` (band borders, logarithmic 20 Hz to 20 kHz),
 `gate` (dB, at its minimum the region is fully open), `ceil` (dB, same range
 as the gate, at its maximum it is off), `gain` (dB), `pan`,
 `timel`, `timer` (0.001 to 3, meaning set by the mode), `mode` (seconds, DAW
-sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `dly`
-(dB, the region's repeats into the mix, default 0 dB) and `send` (dB, the same
-repeats to the reverb). The two are independent: with `dly` at its minimum and
-`send` up, a region feeds the reverb only.
+sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `dry`
+(dB, the region's own band undelayed into the mix, default -inf), `dly` (dB,
+its repeats into the mix, default 0 dB) and `send` (dB, to the reverb, taken
+from the region's output after `dry` and `dly`).
 
 Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
 `satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,

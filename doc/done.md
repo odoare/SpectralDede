@@ -2,6 +2,55 @@
 
 Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
+Work that was never a todo item has no number.
+
+## Region output levels: Dry, Delay, and a post-level reverb send (2026-09-27)
+
+Not a todo item: decided in discussion. A region is now a small channel strip.
+Its band, gain applied, degraded (item 12) and panned, leaves it two ways, each
+with its own level, and the reverb send is taken after both:
+
+```
+band -> gain -> degrade -> pan -+-> Dry ------------+
+                                +-> delay -> Delay -+-> region output -> Send -> reverb
+```
+
+- **Delay** (`dly`, "R1 Delay Level", -inf to 0 dB, default 0 dB): the
+  region's repeats into the mix. Added first, as a knob just before Reverb in
+  the popup.
+- **Dry** (`dry`, "R1 Dry Level", -inf to 0 dB, default -inf): the region's
+  own band, undelayed, into the mix. This is what lets the degrade chain act on
+  a region's dry sound, not only on its repeats.
+- **Send** (`send`, unchanged range): now taken from the region's output,
+  *after* Dry and Delay, like a post-fader send. With Delay at -inf the reverb
+  gets no repeats from that region; with Dry up it gets the region's band; with
+  both down it gets nothing from it. (Briefly, the send was taken from the
+  repeats independently of the Delay level, so a region could feed the reverb
+  alone; that was reversed on request.)
+
+**Add, not replace (option A of the discussion).** The global dry stays the
+untouched input, so a region's Dry adds its processed band *on top of* the
+clean one already there. To hear only the processed band, turn the global Dry
+down (which also removes everything outside the regions). The alternative
+(option B: the splitter also outputs the remainder no region takes, the global
+Dry plays that, and each region's Dry replaces its own range) was considered
+and not chosen; it would cost one more inverse FFT per hop and make a region's
+gain and pan apply to its dry range too.
+
+**Routing.** The regions' Dry outputs are summed on a bus of their own
+(`directBuffer`), scaled only by the output trim: not by the global Dry (as
+asked, independent of it) nor by the global Delays knob (they are not delays).
+The panned band is aligned with the global dry (both come out after the
+splitter's latency), so a region's Dry lines up with it.
+
+**Defaults keep the old sound.** Dry at -inf and Delay at 0 dB give exactly the
+previous output, send included (the send used to take the repeats at full
+level, which is what Delay at 0 dB gives).
+
+**Also.** The popup's Delay tab is now 8 knobs wide (Time L, Time R, Fb L,
+Fb R, Cross, Dry, Delay, Reverb), factory presets carry `dly` at 0 dB and
+`dry` at -inf, and `architecture.md` (signal flow, the add-not-replace note,
+parameter list) and the help text are updated.
 
 ## 12. Degrade tab (2026-09-27)
 

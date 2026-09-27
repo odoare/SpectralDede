@@ -22,7 +22,7 @@ namespace
     constexpr int knobHeight   = 82;
     constexpr int footerHeight = 24;
     constexpr int knobWidth    = 74;
-    constexpr int numKnobs     = 7;     // the delay page's row sets the width
+    constexpr int numKnobs     = 8;     // the delay page's row sets the width
     constexpr int panelMargin  = 8;
 
     constexpr int pageHeight = pagePadding + knobHeight + footerHeight;
@@ -56,7 +56,8 @@ namespace
 }
 
 //==============================================================================
-/** The region's delay: times, feedback, and the two output levels. */
+/** The region's delay (times, feedback) and its three output levels: its
+    own band (Dry), its repeats (Delay), and the reverb send taken from both. */
 class RegionPanel::DelayPage : public juce::Component,
                                private juce::Timer
 {
@@ -74,6 +75,7 @@ public:
         fbL        = knob (ids::rgFbL,   "Fb L");
         fbR        = knob (ids::rgFbR,   "Fb R");
         fbX        = knob (ids::rgFbX,   "Cross");
+        dryLevel   = knob (ids::rgDry,   "Dry");
         delayLevel = knob (ids::rgDly,   "Delay");
         send       = knob (ids::rgSend,  "Reverb");
 
@@ -104,7 +106,7 @@ public:
 
         auto knobs = area.removeFromTop (knobHeight);
         fxme::FxmeSlider* const row[] { timeL.get(), timeR.get(), fbL.get(), fbR.get(),
-                                        fbX.get(), delayLevel.get(), send.get() };
+                                        fbX.get(), dryLevel.get(), delayLevel.get(), send.get() };
 
         const int w = knobs.getWidth() / numKnobs;
         for (auto* k : row)
@@ -157,7 +159,7 @@ private:
     DedeAudioProcessor& processor;
     const int slot;
 
-    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, delayLevel, send;
+    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, dryLevel, delayLevel, send;
     juce::ComboBox modeBox;
     std::unique_ptr<ComboBoxAttachment> modeAttachment;
     juce::String timeText;

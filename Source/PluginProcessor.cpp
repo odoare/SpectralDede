@@ -171,8 +171,15 @@ DedeAudioProcessor::createParameterLayout()
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
-        // The region's repeats into the mix, independent of its reverb send:
-        // with this down and the send up, a region feeds the reverb only.
+        // The region's own band, degraded and panned but not delayed, into
+        // the mix. Off by default: the band is already in the global dry, and
+        // this adds to it rather than replacing it.
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgDry), 1 }, slot + "Dry Level",
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
+            AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
+
+        // The region's repeats into the mix.
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgDly), 1 }, slot + "Delay Level",
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), 0.0f,
@@ -274,6 +281,7 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.fbL   = raw (ids::region (i, ids::rgFbL));
         r.fbR   = raw (ids::region (i, ids::rgFbR));
         r.fbX   = raw (ids::region (i, ids::rgFbX));
+        r.dry   = raw (ids::region (i, ids::rgDry));
         r.dly   = raw (ids::region (i, ids::rgDly));
         r.send  = raw (ids::region (i, ids::rgSend));
 
@@ -310,6 +318,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     regionBuffer.setSize (2, samplesPerBlock, false, false, true);
     wetBuffer.setSize (2, samplesPerBlock, false, false, true);
     sendBuffer.setSize (2, samplesPerBlock, false, false, true);
+    directBuffer.setSize (2, samplesPerBlock, false, false, true);
+    directBuffer.clear();
     bandBuffer.setSize (1, samplesPerBlock, false, false, true);
     panBuffer.setSize (2, samplesPerBlock, false, false, true);
     bandBuffer.clear();
@@ -342,6 +352,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         sendGain[i].setCurrentAndTargetValue (sendLevel (i));
         delayGain[i].reset (sampleRate, 0.02);
         delayGain[i].setCurrentAndTargetValue (delayLevel (i));
+        regionDryGain[i].reset (sampleRate, 0.02);
+        regionDryGain[i].setCurrentAndTargetValue (regionDryLevel (i));
 
         float left = 0.0f, right = 0.0f;
         panGains (i, left, right);
@@ -454,6 +466,12 @@ float DedeAudioProcessor::sendLevel (int slot) const
 float DedeAudioProcessor::delayLevel (int slot) const
 {
     const float db = regions[slot].dly->load();
+    return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
+}
+
+float DedeAudioProcessor::regionDryLevel (int slot) const
+{
+    const float db = regions[slot].dry->load();
     return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
 }
 
@@ -571,10 +589,12 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     splitter.process (monoBuffer.getReadPointer (0), numSamples);
 
     // Each region's band goes through its own stereo delay, and the delay
-    // outputs are what the wet bus carries: the region's direct sound is
-    // already there in the untouched dry path.
+    // outputs are what the wet bus carries. The region's own band, undelayed,
+    // is already in the untouched dry path; its Dry level adds the processed
+    // version on top, on a bus of its own (directBuffer).
     wetBuffer.clear (0, numSamples);
     sendBuffer.clear (0, numSamples);
+    directBuffer.clear (0, numSamples);
 
     for (int i = 0; i < maxRegions; ++i)
     {
@@ -605,16 +625,19 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
                            regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
                            numSamples);
 
-        // The region's repeats go two ways, each with its own level: into the
-        // mix (the delay level) and into the reverb (the send). The send is
-        // taken after the delay, so what reaches the reverb is the region's
-        // repeats rather than its dry band, and it does not follow the delay
-        // level: a region can feed the reverb alone.
+        // The region's output is two parts, each at its own level: its band
+        // as it is (Dry) and its repeats (Delay). The reverb send is taken
+        // from that output, after both levels, like a post-fader send: with
+        // Delay at -inf the reverb gets no repeats from this region, with Dry
+        // at -inf none of its band, and with both down it gets nothing.
+        regionDryGain[i].setTargetValue (regionDryLevel (i));
         delayGain[i].setTargetValue (delayLevel (i));
         sendGain[i].setTargetValue (sendLevel (i));
 
         auto* wetL  = wetBuffer.getWritePointer (0);
         auto* wetR  = wetBuffer.getWritePointer (1);
+        auto* dirL  = directBuffer.getWritePointer (0);
+        auto* dirR  = directBuffer.getWritePointer (1);
         auto* sendL = sendBuffer.getWritePointer (0);
         auto* sendR = sendBuffer.getWritePointer (1);
         const auto* regL = regionBuffer.getReadPointer (0);
@@ -622,12 +645,20 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
         for (int s = 0; s < numSamples; ++s)
         {
-            const float d = delayGain[i].getNextValue();
-            const float g = sendGain[i].getNextValue();
-            wetL[s]  += regL[s] * d;
-            wetR[s]  += regR[s] * d;
-            sendL[s] += regL[s] * g;
-            sendR[s] += regR[s] * g;
+            const float dry   = regionDryGain[i].getNextValue();
+            const float delay = delayGain[i].getNextValue();
+            const float send  = sendGain[i].getNextValue();
+
+            // pl/pr still hold the panned band: the delay wrote elsewhere.
+            const float directL  = pl[s] * dry,     directR  = pr[s] * dry;
+            const float delayedL = regL[s] * delay, delayedR = regR[s] * delay;
+
+            dirL[s]  += directL;
+            dirR[s]  += directR;
+            wetL[s]  += delayedL;
+            wetR[s]  += delayedR;
+            sendL[s] += (directL + delayedL) * send;
+            sendR[s] += (directR + delayedR) * send;
         }
     }
 
@@ -644,6 +675,8 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     const float* wetR = wetBuffer.getReadPointer (1);
     const float* revL = sendBuffer.getReadPointer (0);
     const float* revR = sendBuffer.getReadPointer (1);
+    const float* dirL = directBuffer.getReadPointer (0);
+    const float* dirR = directBuffer.getReadPointer (1);
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -653,6 +686,7 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
         const float og = outGain.getNextValue();
         const float wet[2] { wetL[i], wetR[i] };
         const float rev[2] { revL[i], revR[i] };
+        const float dir[2] { dirL[i], dirR[i] };
 
         for (int ch = 0; ch < numOut; ++ch)
         {
@@ -663,7 +697,9 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
             const float dry = dryDelay.popSample (ch);
 
             const int side = juce::jmin (ch, 1);
-            d[i] = og * (dg * dry + wg * wet[side] + rg * rev[side]);
+            // The regions' own dry bands answer to their own levels only, not
+            // to the global Dry (the untouched input) nor to Delays.
+            d[i] = og * (dg * dry + dir[side] + wg * wet[side] + rg * rev[side]);
         }
     }
 }

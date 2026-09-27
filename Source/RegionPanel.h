@@ -6,12 +6,13 @@
     clicked on the spectrum view, in tabs:
 
       - Delay: the two delay times and how they are read (seconds, host tempo,
-        or the last MIDI note), the three feedback gains, and the two levels
-        the repeats leave with: into the mix (Delay) and into the shared reverb
-        (Reverb), independent of each other.
+        or the last MIDI note), the three feedback gains, and the region's
+        output: its own band undelayed (Dry, off by default, added on top of
+        the global dry), its repeats (Delay), and the send to the shared reverb
+        (Reverb), taken after those two levels.
       - Degrade: the region's band through saturation, bit-crush and
         downsampling, each with its own switch, before it is panned and
-        reaches the delay.
+        reaches both its Dry output and its delay.
 
     Everything a region does to the spectrum itself (its borders, its gate and
     ceiling, its gain and pan) is set by dragging on the view, so none of it
