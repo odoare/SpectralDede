@@ -2,15 +2,23 @@
   ------------------------------------------------------------------------------
     RegionPanel.h
 
-    The settings of one region's delay, shown in a callout when its rectangle
-    is clicked on the spectrum view: the two delay times and how they are read
-    (seconds, host tempo, or the last MIDI note), the three feedback gains, and
-    the two levels the repeats leave with: into the mix (Delay) and into the
-    shared reverb (Reverb), independent of each other.
+    The settings of one region, shown in a callout when its rectangle is
+    clicked on the spectrum view, in tabs:
 
-    Everything a region does to the spectrum itself (its borders, its gate, its
-    gain and pan) is set by dragging on the view, so none of it appears here.
-    The panel is only what has no natural handle on a spectrum.
+      - Delay: the two delay times and how they are read (seconds, host tempo,
+        or the last MIDI note), the three feedback gains, and the two levels
+        the repeats leave with: into the mix (Delay) and into the shared reverb
+        (Reverb), independent of each other.
+      - Degrade: the region's band through saturation, bit-crush and
+        downsampling, each with its own switch, before it is panned and
+        reaches the delay.
+
+    Everything a region does to the spectrum itself (its borders, its gate and
+    ceiling, its gain and pan) is set by dragging on the view, so none of it
+    appears here. The panel is only what has no natural handle on a spectrum.
+
+    The tab last shown is remembered by the editor (not saved), so reopening a
+    region, or opening another, lands where the user was.
 
     Author: Olivier Doaré, github.com/odoare
     (c) 2026 Olivier Doaré
@@ -24,37 +32,26 @@
 #include "PluginProcessor.h"
 #include "Theme.h"
 
-class RegionPanel : public juce::Component,
-                    private juce::Timer
+class RegionPanel : public juce::Component
 {
 public:
-    RegionPanel (DedeAudioProcessor& processor, int slot);
+    /** `lastTab` is owned by the editor, which outlives the callout holding
+        this panel: it is read to pick the opening tab and written whenever the
+        user switches. */
+    RegionPanel (DedeAudioProcessor& processor, int slot, int& lastTab);
+    ~RegionPanel() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    void timerCallback() override;
+    class DelayPage;
+    class DegradePage;
+    class Tabs;
 
-    /** What the two delay values currently come to in milliseconds, which is
-        the only way to read a sync or note-locked time at a glance. */
-    juce::String resolvedTimeText() const;
-
-    using SliderAttachment  = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-
-    /** One knob bound to this region's `suffix` parameter. */
-    std::unique_ptr<fxme::FxmeSlider> makeKnob (const char* suffix, const juce::String& label);
-
-    DedeAudioProcessor& processor;
     const int slot;
     const juce::Colour accent;
-
-    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, delayLevel, send;
-    juce::ComboBox modeBox;
-    std::unique_ptr<ComboBoxAttachment> modeAttachment;
-
-    juce::String timeText;
+    std::unique_ptr<Tabs> tabs;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RegionPanel)
 };

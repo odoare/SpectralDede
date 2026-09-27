@@ -75,6 +75,15 @@ namespace ids
     inline constexpr const char* rgDly   = "dly";     // dB, delay output into the mix
     inline constexpr const char* rgSend  = "send";    // dB, send to the reverb
 
+    // Degrade chain (saturation -> bit-crush -> downsample), per region.
+    inline constexpr const char* rgSatOn    = "saton";   // bool
+    inline constexpr const char* rgSatModel = "satmod";  // SaturationModel choice
+    inline constexpr const char* rgSatDrive = "satdrv";  // dB
+    inline constexpr const char* rgCrushOn  = "crshon";  // bool
+    inline constexpr const char* rgCrushBits = "bits";   // 1..24, fractional
+    inline constexpr const char* rgDsOn     = "dson";    // bool
+    inline constexpr const char* rgDsFactor = "dsf";     // hold length, 1..1024
+
     /** The APVTS id of region slot `slot`'s `suffix` parameter. */
     inline juce::String region (int slot, const char* suffix)
     {
@@ -106,6 +115,18 @@ inline constexpr float maxGainDb = 12.0f;
 /** Feedback and send minima are treated as -infinity (silence) by the DSP. */
 inline constexpr float minFeedbackDb = -60.0f;
 inline constexpr float maxFeedbackDb = 0.0f;
+
+/** Degrade chain. Drive is generous because a single region is far quieter
+    than the full signal; the saturator's output is scaled back by the drive,
+    so the knob sets how hard the band clips, not how loud it comes out. */
+inline constexpr float maxSatDriveDb     = 48.0f;
+inline constexpr float defaultSatDriveDb = 12.0f;
+inline constexpr float minCrushBits      = 1.0f;
+inline constexpr float maxCrushBits      = 24.0f;
+inline constexpr float maxDownsample     = 1024.0f;
+
+/** Order of the saturation model choice; matches fxme::Saturator::Model. */
+inline const juce::StringArray saturationModelNames { "Standard", "Dynamic", "Triode", "Class AB" };
 
 inline constexpr float minDelayValue = 0.001f;
 inline constexpr float maxDelayValue = 3.0f;

@@ -3,6 +3,73 @@
 Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 
+## 12. Degrade tab (2026-09-27)
+
+Each region's band now goes through a degrade chain before its delay:
+saturation, then bit-crush, then downsample, each with its own switch, all off
+by default.
+
+**Signal path.** The splitter now outputs each band mono, gain applied but not
+panned (`setApplyPan (false)`, new in FxmeTools); Dede runs the chain on that
+mono band, then applies the constant-power pan itself (smoothed, 20 ms, as the
+splitter did), then the delay. Panning after the chain keeps a saturator from
+driving the louder side of a panned region harder, and it needs one instance
+of each stage per region instead of one per channel. With every stage off the
+sound is as before.
+
+**Stages** (FxmeTools core classes, reused as they are):
+
+| Stage | Class | Parameters |
+|---|---|---|
+| Saturation | `fxme::Saturator` | `saton`, `satmod` (Standard, Dynamic, Triode, Class AB), `satdrv` (0 to 48 dB, default 12) |
+| Bit-crush | `fxme::BitCrusher` | `crshon`, `bits` (1 to 24, fractional, default 8) |
+| Downsample | `fxme::Downsampler` | `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4) |
+
+Decisions made while implementing:
+
+- **Auto-gain on the saturator.** Its output is divided by the drive gain,
+  which makes it unity for small signals: the drive sets how hard the band
+  clips, not how loud it comes out. Without it, a quiet region driven by
+  +24 dB would come out near full scale, straight into the delay feedback.
+- **Bias and sag fixed per model**, not parameters (as planned). Sag 0.5 for
+  every model but Standard: without sag, "Dynamic" is exactly "Standard".
+  Class AB gets an overlap of -0.1: at 0 its curve is exactly tanh, and the
+  negative overlap is what gives it its crossover notch.
+- **Drive smoothed per sample** (20 ms), through a new linear setter,
+  `Saturator::setDriveGain`, so automating it does not zipper.
+- A stage switched back on starts clean: the saturator's DC blocker and sag,
+  and the downsampler's hold, are reset on the off-to-on edge, and the drive
+  starts at its value rather than gliding to it.
+- Switching a stage is a hard switch (no crossfade); expect a small click when
+  toggling on a loud band.
+
+**FxmeTools.** `SpectralBandSplitter::setApplyPan` (with 3 new checks in
+`core/tests/CoreSplitterTests.cpp`: pan on still pans, pan off gives identical
+channels at the band's own gain) and `Saturator::setDriveGain`, both additive,
+recorded in `api-changes.md`.
+
+**Also.** Factory presets carry the seven new parameters at their defaults;
+`architecture.md` (signal flow and parameter list) and the help text are
+updated.
+
+## 11. Region popup tabs (2026-09-27)
+
+`RegionPanel` (the callout opened by clicking a region) is now a
+`juce::TabbedComponent` with two tabs, **Delay** (the previous content,
+unchanged) and **Degrade** (item 12). The **Spectral transforms** tab arrives
+with item 13; the structure is ready for it (one page class per tab in
+`Source/RegionPanel.cpp`).
+
+- The title is now "Region N" (it said "Region N delay").
+- Tabs styled from the theme: dim text for the back tabs, the region's colour
+  for the front one and its outline.
+- The last tab shown is remembered by the editor (`lastRegionTab`), per editor
+  session and not saved, so the next region opened lands on the same tab.
+  Adding the first tab selects it, so tracking is only switched on once the
+  tabs are built and the remembered one restored.
+- On the Degrade page, the controls of a stage that is off are dimmed but stay
+  editable, so a stage can be set up before it is heard.
+
 ## 9. A ceiling line per region, and a gate knee (2026-09-27)
 
 A second dotted line per region on the gate's dB axis: bins louder than it are

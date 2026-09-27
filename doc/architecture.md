@@ -27,12 +27,22 @@ stereo delay in three time modes, and a send to a shared reverb.
 ```
                         ┌──────────────── dry ────────────────┐
                         │                                     │
-  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> stereo delay 0 ─┐
-                              (STFT)      ├─> region 1 ──> stereo delay 1 ─┤
-                                          └─> ...                          │
-                                                                           ├─> out
-                                          per-region sends ──> reverb ─────┘
+  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> degrade ──> pan ──> stereo delay 0 ─┐
+                              (STFT)      ├─> region 1 ──> degrade ──> pan ──> stereo delay 1 ─┤
+                                          └─> ...                                              │
+                                                                                               ├─> out
+                                          per-region sends ──> reverb ─────────────────────────┘
 ```
+
+Each region leaves the splitter mono, with its gain applied but not its pan
+(`setApplyPan (false)`). It goes through its degrade chain (saturation, then
+bit-crush, then downsample, each with its own switch and skipped when off),
+and only then is panned, constant power, before its delay. Panning after the
+degrade chain keeps a saturator from driving the louder side of a panned
+region harder. The saturator's output is divided by its drive (unity for
+small signals), so the drive knob sets how hard the band clips, not how loud
+it comes out; its bias and sag are fixed per model (sag 0.5 except Standard,
+Class AB with a -0.1 overlap for its crossover notch).
 
 Each region's send is taken after its delay, so what reaches the reverb is the
 region's repeats rather than its dry band. The reverb runs on every block
@@ -164,6 +174,11 @@ sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `dly`
 (dB, the region's repeats into the mix, default 0 dB) and `send` (dB, the same
 repeats to the reverb). The two are independent: with `dly` at its minimum and
 `send` up, a region feeds the reverb only.
+
+Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
+`satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,
+default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4). All
+stages default to off.
 
 A slot's default band is the audible range cut into eight equal frequency
 ratios, so a freshly enabled slot is never degenerate.

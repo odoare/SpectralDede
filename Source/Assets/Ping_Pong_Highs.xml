@@ -24,6 +24,13 @@
   <PARAM id="rg0_fbx" value="-3"/>
   <PARAM id="rg0_dly" value="0"/>
   <PARAM id="rg0_send" value="-20"/>
+  <PARAM id="rg0_saton" value="0"/>
+  <PARAM id="rg0_satmod" value="0"/>
+  <PARAM id="rg0_satdrv" value="12"/>
+  <PARAM id="rg0_crshon" value="0"/>
+  <PARAM id="rg0_bits" value="8"/>
+  <PARAM id="rg0_dson" value="0"/>
+  <PARAM id="rg0_dsf" value="4"/>
   <PARAM id="rg1_on" value="0"/>
   <PARAM id="rg1_flo" value="47.427474"/>
   <PARAM id="rg1_fhi" value="112.468265"/>
@@ -39,6 +46,13 @@
   <PARAM id="rg1_fbx" value="-60"/>
   <PARAM id="rg1_dly" value="0"/>
   <PARAM id="rg1_send" value="-60"/>
+  <PARAM id="rg1_saton" value="0"/>
+  <PARAM id="rg1_satmod" value="0"/>
+  <PARAM id="rg1_satdrv" value="12"/>
+  <PARAM id="rg1_crshon" value="0"/>
+  <PARAM id="rg1_bits" value="8"/>
+  <PARAM id="rg1_dson" value="0"/>
+  <PARAM id="rg1_dsf" value="4"/>
   <PARAM id="rg2_on" value="0"/>
   <PARAM id="rg2_flo" value="112.468265"/>
   <PARAM id="rg2_fhi" value="266.704286"/>
@@ -54,6 +68,13 @@
   <PARAM id="rg2_fbx" value="-60"/>
   <PARAM id="rg2_dly" value="0"/>
   <PARAM id="rg2_send" value="-60"/>
+  <PARAM id="rg2_saton" value="0"/>
+  <PARAM id="rg2_satmod" value="0"/>
+  <PARAM id="rg2_satdrv" value="12"/>
+  <PARAM id="rg2_crshon" value="0"/>
+  <PARAM id="rg2_bits" value="8"/>
+  <PARAM id="rg2_dson" value="0"/>
+  <PARAM id="rg2_dsf" value="4"/>
   <PARAM id="rg3_on" value="0"/>
   <PARAM id="rg3_flo" value="266.704286"/>
   <PARAM id="rg3_fhi" value="632.455532"/>
@@ -69,6 +90,13 @@
   <PARAM id="rg3_fbx" value="-60"/>
   <PARAM id="rg3_dly" value="0"/>
   <PARAM id="rg3_send" value="-60"/>
+  <PARAM id="rg3_saton" value="0"/>
+  <PARAM id="rg3_satmod" value="0"/>
+  <PARAM id="rg3_satdrv" value="12"/>
+  <PARAM id="rg3_crshon" value="0"/>
+  <PARAM id="rg3_bits" value="8"/>
+  <PARAM id="rg3_dson" value="0"/>
+  <PARAM id="rg3_dsf" value="4"/>
   <PARAM id="rg4_on" value="0"/>
   <PARAM id="rg4_flo" value="632.455532"/>
   <PARAM id="rg4_fhi" value="1499.788419"/>
@@ -84,6 +112,13 @@
   <PARAM id="rg4_fbx" value="-60"/>
   <PARAM id="rg4_dly" value="0"/>
   <PARAM id="rg4_send" value="-60"/>
+  <PARAM id="rg4_saton" value="0"/>
+  <PARAM id="rg4_satmod" value="0"/>
+  <PARAM id="rg4_satdrv" value="12"/>
+  <PARAM id="rg4_crshon" value="0"/>
+  <PARAM id="rg4_bits" value="8"/>
+  <PARAM id="rg4_dson" value="0"/>
+  <PARAM id="rg4_dsf" value="4"/>
   <PARAM id="rg5_on" value="0"/>
   <PARAM id="rg5_flo" value="1499.788419"/>
   <PARAM id="rg5_fhi" value="3556.55882"/>
@@ -99,6 +134,13 @@
   <PARAM id="rg5_fbx" value="-60"/>
   <PARAM id="rg5_dly" value="0"/>
   <PARAM id="rg5_send" value="-60"/>
+  <PARAM id="rg5_saton" value="0"/>
+  <PARAM id="rg5_satmod" value="0"/>
+  <PARAM id="rg5_satdrv" value="12"/>
+  <PARAM id="rg5_crshon" value="0"/>
+  <PARAM id="rg5_bits" value="8"/>
+  <PARAM id="rg5_dson" value="0"/>
+  <PARAM id="rg5_dsf" value="4"/>
   <PARAM id="rg6_on" value="0"/>
   <PARAM id="rg6_flo" value="3556.55882"/>
   <PARAM id="rg6_fhi" value="8433.930069"/>
@@ -114,6 +156,13 @@
   <PARAM id="rg6_fbx" value="-60"/>
   <PARAM id="rg6_dly" value="0"/>
   <PARAM id="rg6_send" value="-60"/>
+  <PARAM id="rg6_saton" value="0"/>
+  <PARAM id="rg6_satmod" value="0"/>
+  <PARAM id="rg6_satdrv" value="12"/>
+  <PARAM id="rg6_crshon" value="0"/>
+  <PARAM id="rg6_bits" value="8"/>
+  <PARAM id="rg6_dson" value="0"/>
+  <PARAM id="rg6_dsf" value="4"/>
   <PARAM id="rg7_on" value="0"/>
   <PARAM id="rg7_flo" value="8433.930069"/>
   <PARAM id="rg7_fhi" value="20000"/>
@@ -129,4 +178,11 @@
   <PARAM id="rg7_fbx" value="-60"/>
   <PARAM id="rg7_dly" value="0"/>
   <PARAM id="rg7_send" value="-60"/>
+  <PARAM id="rg7_saton" value="0"/>
+  <PARAM id="rg7_satmod" value="0"/>
+  <PARAM id="rg7_satdrv" value="12"/>
+  <PARAM id="rg7_crshon" value="0"/>
+  <PARAM id="rg7_bits" value="8"/>
+  <PARAM id="rg7_dson" value="0"/>
+  <PARAM id="rg7_dsf" value="4"/>
 </Parameters>

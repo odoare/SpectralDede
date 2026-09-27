@@ -182,6 +182,38 @@ DedeAudioProcessor::createParameterLayout()
             ParameterID { id (ids::rgSend), 1 }, slot + "Reverb Send",
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
+
+        // ---- Degrade: saturation -> bit-crush -> downsample, all off ----------
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgSatOn), 1 }, slot + "Saturation On", false));
+
+        layout.add (std::make_unique<AudioParameterChoice> (
+            ParameterID { id (ids::rgSatModel), 1 }, slot + "Saturation Model",
+            saturationModelNames, 0));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgSatDrive), 1 }, slot + "Saturation Drive",
+            NormalisableRange<float> (0.0f, maxSatDriveDb, 0.1f), defaultSatDriveDb,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return "+" + String (x, 1) + " dB"; })));
+
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgCrushOn), 1 }, slot + "Bit-crush On", false));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgCrushBits), 1 }, slot + "Bit-crush Bits",
+            NormalisableRange<float> (minCrushBits, maxCrushBits, 0.01f), 8.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return String (x, 1) + " bits"; })));
+
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgDsOn), 1 }, slot + "Downsample On", false));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgDsFactor), 1 }, slot + "Downsample Factor",
+            logRange (1.0f, maxDownsample), 4.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return "x" + String (x, x < 10.0f ? 2 : 1); })));
     }
 
     return layout;
@@ -244,6 +276,14 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.fbX   = raw (ids::region (i, ids::rgFbX));
         r.dly   = raw (ids::region (i, ids::rgDly));
         r.send  = raw (ids::region (i, ids::rgSend));
+
+        r.satOn    = raw (ids::region (i, ids::rgSatOn));
+        r.satModel = raw (ids::region (i, ids::rgSatModel));
+        r.satDrive = raw (ids::region (i, ids::rgSatDrive));
+        r.crushOn  = raw (ids::region (i, ids::rgCrushOn));
+        r.crushBits = raw (ids::region (i, ids::rgCrushBits));
+        r.dsOn     = raw (ids::region (i, ids::rgDsOn));
+        r.dsFactor = raw (ids::region (i, ids::rgDsFactor));
     }
 }
 
@@ -253,6 +293,10 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     sampleRate = newSampleRate;
 
     splitter.prepare (sampleRate, samplesPerBlock, maxRegions, splitterFftOrder);
+
+    // Each band leaves the splitter mono (gain applied, no pan) so the degrade
+    // chain treats both sides alike; the pan is applied after it, here.
+    splitter.setApplyPan (false);
 
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
@@ -266,6 +310,10 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     regionBuffer.setSize (2, samplesPerBlock, false, false, true);
     wetBuffer.setSize (2, samplesPerBlock, false, false, true);
     sendBuffer.setSize (2, samplesPerBlock, false, false, true);
+    bandBuffer.setSize (1, samplesPerBlock, false, false, true);
+    panBuffer.setSize (2, samplesPerBlock, false, false, true);
+    bandBuffer.clear();
+    panBuffer.clear();
     monoBuffer.clear();
     regionBuffer.clear();
     wetBuffer.clear();
@@ -294,6 +342,18 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         sendGain[i].setCurrentAndTargetValue (sendLevel (i));
         delayGain[i].reset (sampleRate, 0.02);
         delayGain[i].setCurrentAndTargetValue (delayLevel (i));
+
+        float left = 0.0f, right = 0.0f;
+        panGains (i, left, right);
+        panL[i].reset (sampleRate, 0.02);
+        panR[i].reset (sampleRate, 0.02);
+        panL[i].setCurrentAndTargetValue (left);
+        panR[i].setCurrentAndTargetValue (right);
+
+        saturators[i].prepare (sampleRate);
+        satDrive[i].reset (sampleRate, 0.02);
+        downsamplers[i].reset();
+        satWasOn[i] = dsWasOn[i] = false;
     }
 }
 
@@ -303,6 +363,10 @@ void DedeAudioProcessor::releaseResources()
     dryDelay.reset();
     reverb.reset();
     for (auto& d : delays)
+        d.reset();
+    for (auto& s : saturators)
+        s.reset();
+    for (auto& d : downsamplers)
         d.reset();
 }
 
@@ -393,6 +457,79 @@ float DedeAudioProcessor::delayLevel (int slot) const
     return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
 }
 
+void DedeAudioProcessor::panGains (int slot, float& left, float& right) const
+{
+    // Constant power, as the splitter did before the pan moved here: sweeping
+    // a region across the image keeps its loudness.
+    const float theta = (juce::jlimit (-1.0f, 1.0f, regions[slot].pan->load()) + 1.0f)
+                            * juce::MathConstants<float>::pi * 0.25f;
+    left  = std::cos (theta);
+    right = std::sin (theta);
+}
+
+void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
+{
+    const auto& r = regions[slot];
+
+    // Stages that are off cost nothing: they are skipped, not run neutral.
+    const bool satOn = r.satOn->load() > 0.5f;
+    if (satOn)
+    {
+        auto& sat = saturators[slot];
+        const float driveGain = juce::Decibels::decibelsToGain (r.satDrive->load());
+
+        // Coming back on: forget the DC blocker and sag state of the last
+        // time, and start the drive where it is rather than gliding to it.
+        if (! satWasOn[slot])
+        {
+            sat.reset();
+            satDrive[slot].setCurrentAndTargetValue (driveGain);
+        }
+
+        // Bias and sag are not parameters; fixed values give each model its
+        // character. Sag makes Dynamic differ from Standard at all, and a
+        // negative overlap is what gives Class AB its crossover notch.
+        using Model = fxme::Saturator::Model;
+        const auto model = (Model) juce::jlimit (0, 3, (int) r.satModel->load());
+        sat.setModel (model);
+        sat.setSag (model == Model::Standard ? 0.0f : 0.5f);
+        sat.setBias (model == Model::ClassAB ? -0.1f : 0.0f);
+
+        satDrive[slot].setTargetValue (driveGain);
+
+        // Divided back by the drive: unity for small signals, so the drive
+        // sets how hard the band clips rather than how loud it comes out.
+        for (int s = 0; s < numSamples; ++s)
+        {
+            const float g = satDrive[slot].getNextValue();
+            sat.setDriveGain (g);
+            x[s] = sat.processSample (x[s]) / g;
+        }
+    }
+    satWasOn[slot] = satOn;
+
+    if (r.crushOn->load() > 0.5f)
+    {
+        auto& crusher = crushers[slot];
+        crusher.setBits (r.crushBits->load());
+        for (int s = 0; s < numSamples; ++s)
+            x[s] = crusher.processSample (x[s]);
+    }
+
+    const bool dsOn = r.dsOn->load() > 0.5f;
+    if (dsOn)
+    {
+        auto& ds = downsamplers[slot];
+        if (! dsWasOn[slot])
+            ds.reset();
+
+        ds.setFactor (r.dsFactor->load());
+        for (int s = 0; s < numSamples; ++s)
+            x[s] = ds.processSample (x[s]);
+    }
+    dsWasOn[slot] = dsOn;
+}
+
 void DedeAudioProcessor::updateDelay (int slot)
 {
     const auto& r = regions[slot];
@@ -445,7 +582,26 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
             continue;
 
         updateDelay (i);
-        delays[i].process (splitter.getBandOutput (i, 0), splitter.getBandOutput (i, 1),
+
+        // Band (mono, gain applied) -> degrade -> pan -> the region's delay.
+        float* band = bandBuffer.getWritePointer (0);
+        juce::FloatVectorOperations::copy (band, splitter.getBandOutput (i, 0), numSamples);
+        applyDegrade (i, band, numSamples);
+
+        float left = 0.0f, right = 0.0f;
+        panGains (i, left, right);
+        panL[i].setTargetValue (left);
+        panR[i].setTargetValue (right);
+
+        float* pl = panBuffer.getWritePointer (0);
+        float* pr = panBuffer.getWritePointer (1);
+        for (int s = 0; s < numSamples; ++s)
+        {
+            pl[s] = band[s] * panL[i].getNextValue();
+            pr[s] = band[s] * panR[i].getNextValue();
+        }
+
+        delays[i].process (pl, pr,
                            regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
                            numSamples);
 

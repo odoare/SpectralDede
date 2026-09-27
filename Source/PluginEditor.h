@@ -71,6 +71,11 @@ private:
     fxme::SpectrumRegionEditor spectrum;
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
 
+    /** The region popup's tab last shown, so the next one opens on it. Per
+        editor session, not saved. The popup is a child of this editor, so the
+        reference it keeps never outlives this. */
+    int lastRegionTab = 0;
+
     // Global controls: levels on the left, the gate knee, then the shared
     // reverb on the right.
     fxme::FxmeSlider dryKnob      { processor.getAPVTS(), dede::ids::dryLevel, "Dry",     dede::theme::accent };

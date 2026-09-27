@@ -97,6 +97,14 @@ private:
         std::atomic<float>* fbX   = nullptr;
         std::atomic<float>* dly   = nullptr;
         std::atomic<float>* send  = nullptr;
+
+        std::atomic<float>* satOn     = nullptr;
+        std::atomic<float>* satModel  = nullptr;
+        std::atomic<float>* satDrive  = nullptr;
+        std::atomic<float>* crushOn   = nullptr;
+        std::atomic<float>* crushBits = nullptr;
+        std::atomic<float>* dsOn      = nullptr;
+        std::atomic<float>* dsFactor  = nullptr;
     };
 
     void cacheParameterPointers();
@@ -144,9 +152,25 @@ private:
         bottom of the range read as silence. */
     float delayLevel (int slot) const;
 
+    /** One region's constant-power pan as a pair of gains. */
+    void panGains (int slot, float& left, float& right) const;
+
+    /** Runs one region's mono band through its degrade chain in place:
+        saturation, bit-crush, downsample, each skipped when off. */
+    void applyDegrade (int slot, float* x, int numSamples);
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
     fxme::StereoCrossDelay delays[dede::maxRegions];
+
+    // Degrade chain, one set per region. The band is mono at that point (the
+    // pan comes after), so one instance of each per region is enough.
+    fxme::Saturator   saturators[dede::maxRegions];
+    fxme::BitCrusher  crushers[dede::maxRegions];
+    fxme::Downsampler downsamplers[dede::maxRegions];
+    juce::SmoothedValue<float> satDrive[dede::maxRegions];
+    bool satWasOn[dede::maxRegions] {};
+    bool dsWasOn[dede::maxRegions] {};
     fxme::Reverb reverb;
 
     /** The dry path is delayed by the splitter's latency so it stays lined up
@@ -158,6 +182,8 @@ private:
     juce::AudioBuffer<float> regionBuffer;  // stereo, one region's delay output
     juce::AudioBuffer<float> wetBuffer;     // stereo, the summed regions
     juce::AudioBuffer<float> sendBuffer;    // stereo, what the regions send to the reverb
+    juce::AudioBuffer<float> bandBuffer;    // 1 channel, one region's band through its degrade chain
+    juce::AudioBuffer<float> panBuffer;     // stereo, that band panned, into its delay
 
     juce::SmoothedValue<float> dryGain, wetGain, revGain, outGain;
 
@@ -165,6 +191,10 @@ private:
         ringing without stepping the tail. */
     juce::SmoothedValue<float> sendGain[dede::maxRegions];
     juce::SmoothedValue<float> delayGain[dede::maxRegions];
+
+    /** The pan, applied after the degrade chain (the splitter's own pan is
+        off), smoothed like the splitter smoothed it. */
+    juce::SmoothedValue<float> panL[dede::maxRegions], panR[dede::maxRegions];
 
     std::atomic<double> currentBpm { 120.0 };
     std::atomic<float>  lastNoteHz { 0.0f };

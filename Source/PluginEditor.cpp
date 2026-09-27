@@ -27,7 +27,8 @@ namespace
         "  drag the dotted line to set the ceiling: what rises above it is cut\n"
         "    (at the top it is off; the two lines push each other apart)\n"
         "  drag the round handle for gain (up/down) and pan (left/right)\n"
-        "  click a region to open its delay settings\n"
+        "  click a region to open its settings: delay, and degrade (saturation,\n"
+        "    bit-crush, downsample, applied to the band before its delay)\n"
         "  Delete or Backspace removes the selected region\n\n"
         "Delay times read three ways, chosen per region: seconds, a proportion "
         "of a whole note at the host tempo (0.25 is a quarter note), or a "
@@ -278,7 +279,7 @@ void DedeAudioProcessorEditor::showRegionPanel (int slot)
     const auto area = getLocalArea (&spectrum, spectrum.getRegionArea (slot).toFloat())
                           .toNearestInt();
 
-    juce::CallOutBox::launchAsynchronously (std::make_unique<RegionPanel> (processor, slot),
+    juce::CallOutBox::launchAsynchronously (std::make_unique<RegionPanel> (processor, slot, lastRegionTab),
                                             area, this);
 }
 

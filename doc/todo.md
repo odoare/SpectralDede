@@ -211,61 +211,13 @@ setter), so it needs a core test and an `api-changes.md` entry. Costs one
 multiply-add per bin per region per hop, and it delays the gate's opening on
 attacks by roughly the time constant.
 
-### 11. Region popup tabs
-
-*Not mandatory. Prerequisite for items 12 and 13.*
-
-`RegionPanel` (the callout opened by clicking a region) currently holds the
-delay settings only. Put them in a `juce::TabbedComponent` with three tabs:
-**Delay** (today's content), **Degrade** (item 12) and **Spectral transforms**
-(item 13). Tab bar coloured with the region's colour. Remember the last tab
-opened (per editor session, not saved) so reopening a region lands where the
-user was.
-
-Parameter budget: items 12 and 13 add about 12 parameters per region, so the
-total goes from about 110 to about 210. Hosts cope, but keep the
-non-essential ones (saturator bias and sag) out unless they earn their place.
-
-### 12. Degrade tab
-
-*Not mandatory. Planned.*
-
-Per region, a fixed chain of three stages, each with its own on/off switch:
-
-| Stage | FxmeTools class | Parameters | State |
-|---|---|---|---|
-| Saturation | `fxme::Saturator` | on, model (Standard / Dynamic / Triode / ClassAB), drive (dB) | one per channel |
-| Bit-crush | `fxme::BitCrusher` | on, bits (1 to 24, fractional) | none |
-| Downsample | `fxme::Downsampler` | on, hold factor (1 to 1024, fractional, log range) | one per channel |
-
-All three are core, JUCE-free and realtime-safe; nothing to write in
-FxmeTools for the stages themselves.
-
-1. **Placement: after the splitter, before the delay.** Every repeat is then
-   equally degraded, and the work is plain per-sample code in Dede's
-   processor (8 regions x 2 channels). Degrading inside the feedback loop
-   (repeats getting dirtier each time) is nicer but needs the feedback hook of
-   item 13b; keep it for later.
-2. **Pan after degrade.** The splitter applies gain and pan itself, so a
-   region arrives already panned, and a saturator after the pan drives the
-   louder side harder (a region panned left distorts more on the left). Add an
-   option to `fxme::SpectralBandSplitter` to output each band mono with its
-   gain applied but no pan, and apply the constant-power pan in Dede after the
-   degrade chain. Keep the gain inside the splitter: it then acts as the drive
-   into the saturator, which is what a user expects. FxmeTools change: core
-   test, `api-changes.md` entry, default behaviour unchanged.
-3. **Drive range.** A single region is much quieter than the full signal, so
-   the drive range needs more headroom than a full-band saturator (something
-   like 0 to +48 dB).
-4. **Aliasing is the point** of bit-crush and downsample, but it spreads
-   energy far outside the region (a 100 to 200 Hz region downsampled fills
-   the highs). That is what "keep in band" (item 14) is for.
-5. Stages that are off cost nothing; skip them rather than running them at
-   neutral settings.
-
 ### 13. Spectral transforms tab
 
 *Not mandatory. Planned.*
+
+Adds the third tab of the region popup (items 11 and 12, done, built the tabs
+and the Degrade page: add a `SpectralPage` next to `DelayPage` and
+`DegradePage` in `Source/RegionPanel.cpp`).
 
 Three effects that work on each region's spectrum inside the splitter's frame,
 where the FFT is already paid for: **pitch shift**, **freeze** and **blur**.
