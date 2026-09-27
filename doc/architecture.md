@@ -51,7 +51,11 @@ overlap-add, one analysis FFT per hop and one inverse FFT per active region),
 and a region is a set of bins plus a per-bin gate: inside its interval, bins
 quieter than the gate threshold are muted and the rest pass. That is what lets
 a region take only the peaks of its band, or only its noise floor, which no
-filter can do.
+filter can do. A per-bin ceiling mirrors the gate (bins louder than it are
+muted), so a region can also keep only the level window between the two
+lines, for instance the quiet tails and room of a sound without its loud
+notes. A global knee turns both switches into smooth transitions a given
+number of dB wide.
 
 Three consequences shape the rest of the design:
 
@@ -90,7 +94,10 @@ FxmeTools (new or extended, see the steps above):
   Nothing that existed changed meaning.
 - `components/SpectrumRegionEditor.h/.cpp` — added in step 3: a fixed pool of
   rectangular regions over a `SpectrumDisplay`, with border, gate and gain/pan
-  handles, drag-to-create and Delete-to-remove. It owns no values: every
+  handles, drag-to-create and Delete-to-remove. Later: the handle under the
+  pointer is highlighted, and an opt-in ceiling line (`setCeilingEnabled`)
+  mirrors the gate; the two push each other apart when dragged, and the hit
+  test picks the nearest line (between gate and ceiling, by their midpoint). It owns no values: every
   gesture reports through a callback and the consumer pushes the result back
   with `setRegion`, which is what keeps the APVTS the single source of truth.
 - `dsp/StereoCrossDelay.h` — added in step 4: two `fxme::DelayLine`s (their own
@@ -144,11 +151,14 @@ Region identifiers are built as `rg<slot>_<suffix>` (`rg0_flo`, `rg3_fbx`); the
 scheme is part of the saved state, so slots are never renumbered and suffixes
 never renamed.
 
-Global: `dryLevel`, `wetLevel` (the summed delays), `outLevel`, and the shared
-reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`.
+Global: `dryLevel`, `wetLevel` (the summed delays), `outLevel`, the shared
+reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`, and `gateKnee` (dB, the
+width of the transition around every gate and ceiling line; 0 is a hard
+switch).
 
 Per region: `on`, `flo`, `fhi` (band borders, logarithmic 20 Hz to 20 kHz),
-`gate` (dB, at its minimum the region is fully open), `gain` (dB), `pan`,
+`gate` (dB, at its minimum the region is fully open), `ceil` (dB, same range
+as the gate, at its maximum it is off), `gain` (dB), `pan`,
 `timel`, `timer` (0.001 to 3, meaning set by the mode), `mode` (seconds, DAW
 sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `send`
 (dB, to the reverb).

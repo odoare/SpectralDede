@@ -86,6 +86,7 @@ private:
         std::atomic<float>* fLo   = nullptr;
         std::atomic<float>* fHi   = nullptr;
         std::atomic<float>* gate  = nullptr;
+        std::atomic<float>* ceil  = nullptr;
         std::atomic<float>* gain  = nullptr;
         std::atomic<float>* pan   = nullptr;
         std::atomic<float>* timeL = nullptr;
@@ -114,6 +115,7 @@ private:
     std::atomic<float>* pRevDamp  = nullptr;
     std::atomic<float>* pRevWidth = nullptr;
     std::atomic<float>* pRevLevel = nullptr;
+    std::atomic<float>* pGateKnee = nullptr;
 
     /** Mono-sums the input into monoBuffer: what the spectrum view shows and
         what the band splitter is fed are then one and the same signal, which

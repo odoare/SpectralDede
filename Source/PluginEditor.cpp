@@ -24,6 +24,8 @@ namespace
         "  drag on empty space to draw a new one\n"
         "  drag a border to move it, drag inside to move the whole band\n"
         "  drag the dashed line to set the gate: what rises above it passes\n"
+        "  drag the dotted line to set the ceiling: what rises above it is cut\n"
+        "    (at the top it is off; the two lines push each other apart)\n"
         "  drag the round handle for gain (up/down) and pan (left/right)\n"
         "  click a region to open its delay settings\n"
         "  Delete or Backspace removes the selected region\n\n"
@@ -36,7 +38,10 @@ namespace
         "  alt+drag or middle-drag pans, double-click resets\n"
         "  the window size is pinned to the one the gates are measured in\n\n"
         "The bottom row holds the levels of the dry signal, the summed delays "
-        "and the reverb return, the output trim, and the reverb itself.";
+        "and the reverb return, the output trim, the gate knee, and the reverb "
+        "itself. The knee (shared by every region) softens the gate and the "
+        "ceiling: at 0 a bin is passed or cut outright, wider it fades in and "
+        "out across that many dB around each line.";
 }
 
 //==============================================================================
@@ -81,6 +86,8 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     spectrum.setNumRegions (maxRegions);
     spectrum.setGainRange (minGainDb, maxGainDb);
     spectrum.setGateRange (gateFloorDb, gateCeilDb);
+    spectrum.setCeilingRange (gateFloorDb, gateCeilDb);
+    spectrum.setCeilingEnabled (true);
     wireRegionEditor();
     refreshRegionsFromParameters (true);
     addAndMakeVisible (spectrum);
@@ -89,6 +96,7 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     setUpKnob (wetKnob,      theme::accent);
     setUpKnob (revLevelKnob, theme::specViolet);
     setUpKnob (outKnob,      theme::accent);
+    setUpKnob (kneeKnob,     theme::accent);
     setUpKnob (roomKnob,     theme::specViolet);
     setUpKnob (dampKnob,     theme::specViolet);
     setUpKnob (widthKnob,    theme::specViolet);
@@ -150,6 +158,7 @@ DedeAudioProcessorEditor::regionFromParameters (int slot) const
     r.lowHz  = juce::jmin (a, b);
     r.highHz = juce::jmax (a, b);
     r.gateDb = value (ids::rgGate);
+    r.ceilingDb = value (ids::rgCeil);
     r.gainDb = value (ids::rgGain);
     r.pan    = value (ids::rgPan);
     r.colour = theme::regionColour (slot);
@@ -171,6 +180,7 @@ void DedeAudioProcessorEditor::refreshRegionsFromParameters (bool force)
             || ! same (r.lowHz,  shown.lowHz)
             || ! same (r.highHz, shown.highHz)
             || ! same (r.gateDb, shown.gateDb)
+            || ! same (r.ceilingDb, shown.ceilingDb)
             || ! same (r.gainDb, shown.gainDb)
             || ! same (r.pan,    shown.pan);
 
@@ -195,7 +205,10 @@ void DedeAudioProcessorEditor::beginGesture (int slot,
     {
         case Handle::leftEdge:  touched = { ids::rgFLo }; break;
         case Handle::rightEdge: touched = { ids::rgFHi }; break;
-        case Handle::gate:      touched = { ids::rgGate }; break;
+        // Either level line can push the other along, so a drag of one is a
+        // gesture on both.
+        case Handle::gate:
+        case Handle::ceiling:   touched = { ids::rgGate, ids::rgCeil }; break;
         case Handle::gainPan:   touched = { ids::rgGain, ids::rgPan }; break;
         case Handle::body:      touched = { ids::rgFLo, ids::rgFHi }; break;
         case Handle::none:
@@ -217,6 +230,7 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         setParameter (ids::region (slot, ids::rgFLo),  r.lowHz);
         setParameter (ids::region (slot, ids::rgFHi),  r.highHz);
         setParameter (ids::region (slot, ids::rgGate), r.gateDb);
+        setParameter (ids::region (slot, ids::rgCeil), r.ceilingDb);
         setParameter (ids::region (slot, ids::rgGain), r.gainDb);
         setParameter (ids::region (slot, ids::rgPan),  r.pan);
         shownRegions[slot] = r;
@@ -233,6 +247,7 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         setParameter (ids::region (slot, ids::rgFLo),  lowHz);
         setParameter (ids::region (slot, ids::rgFHi),  highHz);
         setParameter (ids::region (slot, ids::rgGate), gateFloorDb);
+        setParameter (ids::region (slot, ids::rgCeil), gateCeilDb);
         setParameter (ids::region (slot, ids::rgGain), 0.0f);
         setParameter (ids::region (slot, ids::rgPan),  0.0f);
         setParameter (ids::region (slot, ids::rgOn),   1.0f);
@@ -310,8 +325,8 @@ void DedeAudioProcessorEditor::resized()
     area.removeFromBottom (theme::margin);
     spectrum.setBounds (area);
 
-    // Four level knobs on the left, the three reverb knobs on the right, with
-    // whatever is left over as a gap between the two groups.
+    // Four level knobs on the left, the three reverb knobs on the right, the
+    // gate knee just left of the reverb, and whatever is left over as a gap.
     fxme::FxmeSlider* const levels[] { &dryKnob, &wetKnob, &revLevelKnob, &outKnob };
     fxme::FxmeSlider* const reverb[] { &roomKnob, &dampKnob, &widthKnob };
 
@@ -324,4 +339,8 @@ void DedeAudioProcessorEditor::resized()
     auto rightArea = controls.removeFromRight (knobW * (int) std::size (reverb));
     for (auto* k : reverb)
         k->setBounds (rightArea.removeFromLeft (knobW).reduced (4));
+
+    // The gate section sits against the reverb group, leaving the gap on the
+    // levels' side.
+    kneeKnob.setBounds (controls.removeFromRight (knobW).reduced (4));
 }

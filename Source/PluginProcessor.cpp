@@ -92,6 +92,14 @@ DedeAudioProcessor::createParameterLayout()
         NormalisableRange<float> (-60.0f, 12.0f, 0.1f), 0.0f,
         AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
+    // ---- Spectral gate, shared by every region ------------------------------
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ids::gateKnee, 1 }, "Gate knee",
+        NormalisableRange<float> (0.0f, maxGateKneeDb, 0.1f), 0.0f,
+        AudioParameterFloatAttributes().withStringFromValueFunction (
+            [] (float x, int) { return x <= 0.0f ? String ("hard")
+                                                 : String (x, 1) + " dB"; })));
+
     // ---- Region slots ------------------------------------------------------
     const StringArray modeNames { "Seconds", "DAW sync", "MIDI note" };
 
@@ -119,6 +127,13 @@ DedeAudioProcessor::createParameterLayout()
             AudioParameterFloatAttributes().withStringFromValueFunction (
                 [] (float x, int) { return x <= gateFloorDb ? String ("open")
                                                             : String (x, 1) + " dB"; })));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgCeil), 1 }, slot + "Ceiling",
+            NormalisableRange<float> (gateFloorDb, gateCeilDb, 0.1f), gateCeilDb,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return x >= gateCeilDb ? String ("off")
+                                                           : String (x, 1) + " dB"; })));
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgGain), 1 }, slot + "Gain",
@@ -202,6 +217,7 @@ void DedeAudioProcessor::cacheParameterPointers()
     pRevDamp  = raw (ids::revDamp);
     pRevWidth = raw (ids::revWidth);
     pRevLevel = raw (ids::revLevel);
+    pGateKnee = raw (ids::gateKnee);
 
     for (int i = 0; i < maxRegions; ++i)
     {
@@ -210,6 +226,7 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.fLo   = raw (ids::region (i, ids::rgFLo));
         r.fHi   = raw (ids::region (i, ids::rgFHi));
         r.gate  = raw (ids::region (i, ids::rgGate));
+        r.ceil  = raw (ids::region (i, ids::rgCeil));
         r.gain  = raw (ids::region (i, ids::rgGain));
         r.pan   = raw (ids::region (i, ids::rgPan));
         r.timeL = raw (ids::region (i, ids::rgTimeL));
@@ -334,6 +351,7 @@ void DedeAudioProcessor::updateBands()
         // valid region: take the interval either way round.
         const float a = r.fLo->load(), b = r.fHi->load();
         const float gateDb = r.gate->load();
+        const float ceilDb = r.ceil->load();
 
         fxme::SpectralBand band;
         band.enabled = r.on->load() > 0.5f;
@@ -343,6 +361,11 @@ void DedeAudioProcessor::updateBands()
                                              : gateDb;
         band.gainDb  = r.gain->load();
         band.pan     = r.pan->load();
+
+        // The ends of the range switch the stage off rather than meaning a
+        // level: the gate at its floor is open, the ceiling at its top is off.
+        band.ceilingDb = ceilDb >= gateCeilDb ? fxme::SpectralBandSplitter::offCeilingDb
+                                              : ceilDb;
 
         splitter.setBand (i, band);
     }
@@ -486,6 +509,10 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.copyFrom (ch, 0, buffer, juce::jmax (0, juce::jmin (ch, numIn - 1)), 0, n);
 
     updateTransportAndMidi (midiMessages);
+
+    // Before updateBands(): a knee change recomputes every band's thresholds,
+    // and setBand() then works from the new knee.
+    splitter.setGateKnee (pGateKnee->load());
     updateBands();
 
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));

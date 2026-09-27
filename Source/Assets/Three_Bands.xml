@@ -8,10 +8,12 @@
   <PARAM id="revDamp" value="0.55"/>
   <PARAM id="revWidth" value="1"/>
   <PARAM id="revLevel" value="-6"/>
+  <PARAM id="gateKnee" value="0"/>
   <PARAM id="rg0_on" value="1"/>
   <PARAM id="rg0_flo" value="20"/>
   <PARAM id="rg0_fhi" value="200"/>
   <PARAM id="rg0_gate" value="-100"/>
+  <PARAM id="rg0_ceil" value="0"/>
   <PARAM id="rg0_gain" value="0"/>
   <PARAM id="rg0_pan" value="0"/>
   <PARAM id="rg0_timel" value="0.5"/>
@@ -25,6 +27,7 @@
   <PARAM id="rg1_flo" value="200"/>
   <PARAM id="rg1_fhi" value="2000"/>
   <PARAM id="rg1_gate" value="-100"/>
+  <PARAM id="rg1_ceil" value="0"/>
   <PARAM id="rg1_gain" value="-2"/>
   <PARAM id="rg1_pan" value="-0.5"/>
   <PARAM id="rg1_timel" value="0.25"/>
@@ -38,6 +41,7 @@
   <PARAM id="rg2_flo" value="2000"/>
   <PARAM id="rg2_fhi" value="20000"/>
   <PARAM id="rg2_gate" value="-100"/>
+  <PARAM id="rg2_ceil" value="0"/>
   <PARAM id="rg2_gain" value="-4"/>
   <PARAM id="rg2_pan" value="0.5"/>
   <PARAM id="rg2_timel" value="0.1875"/>
@@ -51,6 +55,7 @@
   <PARAM id="rg3_flo" value="266.704286"/>
   <PARAM id="rg3_fhi" value="632.455532"/>
   <PARAM id="rg3_gate" value="-100"/>
+  <PARAM id="rg3_ceil" value="0"/>
   <PARAM id="rg3_gain" value="0"/>
   <PARAM id="rg3_pan" value="0"/>
   <PARAM id="rg3_timel" value="0.25"/>
@@ -64,6 +69,7 @@
   <PARAM id="rg4_flo" value="632.455532"/>
   <PARAM id="rg4_fhi" value="1499.788419"/>
   <PARAM id="rg4_gate" value="-100"/>
+  <PARAM id="rg4_ceil" value="0"/>
   <PARAM id="rg4_gain" value="0"/>
   <PARAM id="rg4_pan" value="0"/>
   <PARAM id="rg4_timel" value="0.25"/>
@@ -77,6 +83,7 @@
   <PARAM id="rg5_flo" value="1499.788419"/>
   <PARAM id="rg5_fhi" value="3556.55882"/>
   <PARAM id="rg5_gate" value="-100"/>
+  <PARAM id="rg5_ceil" value="0"/>
   <PARAM id="rg5_gain" value="0"/>
   <PARAM id="rg5_pan" value="0"/>
   <PARAM id="rg5_timel" value="0.25"/>
@@ -90,6 +97,7 @@
   <PARAM id="rg6_flo" value="3556.55882"/>
   <PARAM id="rg6_fhi" value="8433.930069"/>
   <PARAM id="rg6_gate" value="-100"/>
+  <PARAM id="rg6_ceil" value="0"/>
   <PARAM id="rg6_gain" value="0"/>
   <PARAM id="rg6_pan" value="0"/>
   <PARAM id="rg6_timel" value="0.25"/>
@@ -103,6 +111,7 @@
   <PARAM id="rg7_flo" value="8433.930069"/>
   <PARAM id="rg7_fhi" value="20000"/>
   <PARAM id="rg7_gate" value="-100"/>
+  <PARAM id="rg7_ceil" value="0"/>
   <PARAM id="rg7_gain" value="0"/>
   <PARAM id="rg7_pan" value="0"/>
   <PARAM id="rg7_timel" value="0.25"/>

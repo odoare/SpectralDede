@@ -56,11 +56,14 @@ namespace ids
     inline constexpr const char* revWidth   = "revWidth";     // 0..1
     inline constexpr const char* revLevel   = "revLevel";     // dB, reverb return
 
+    inline constexpr const char* gateKnee   = "gateKnee";     // dB, gate/ceiling transition
+
     // Per-region suffixes (see the file header for the naming scheme).
     inline constexpr const char* rgOn    = "on";      // region slot in use
     inline constexpr const char* rgFLo   = "flo";     // Hz, left border
     inline constexpr const char* rgFHi   = "fhi";     // Hz, right border
     inline constexpr const char* rgGate  = "gate";    // dB, spectral gate floor
+    inline constexpr const char* rgCeil  = "ceil";    // dB, spectral ceiling
     inline constexpr const char* rgGain  = "gain";    // dB
     inline constexpr const char* rgPan   = "pan";     // -1..1
     inline constexpr const char* rgTimeL = "timel";   // 0.001..3, see DelayMode
@@ -86,9 +89,15 @@ inline constexpr float minFreqHz = 20.0f;
 inline constexpr float maxFreqHz = 20000.0f;
 
 /** A gate at its minimum is fully open (nothing is rejected), which is why the
-    default sits there: a freshly drawn region passes its whole band. */
+    default sits there: a freshly drawn region passes its whole band. The
+    ceiling shares this range, mirrored: at its maximum (gateCeilDb) it is off,
+    and that is its default. */
 inline constexpr float gateFloorDb = -100.0f;
 inline constexpr float gateCeilDb  = 0.0f;
+
+/** Width of the transition around the gate and the ceiling lines. 0 switches
+    each bin outright; wider, a bin fades in and out across that many dB. */
+inline constexpr float maxGateKneeDb = 24.0f;
 
 inline constexpr float minGainDb = -60.0f;
 inline constexpr float maxGainDb = 12.0f;

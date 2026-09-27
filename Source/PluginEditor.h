@@ -71,11 +71,13 @@ private:
     fxme::SpectrumRegionEditor spectrum;
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
 
-    // Global controls: levels on the left, the shared reverb on the right.
+    // Global controls: levels on the left, the gate knee, then the shared
+    // reverb on the right.
     fxme::FxmeSlider dryKnob      { processor.getAPVTS(), dede::ids::dryLevel, "Dry",     dede::theme::accent };
     fxme::FxmeSlider wetKnob      { processor.getAPVTS(), dede::ids::wetLevel, "Delays",  dede::theme::accent };
     fxme::FxmeSlider revLevelKnob { processor.getAPVTS(), dede::ids::revLevel, "Reverb",  dede::theme::specViolet };
     fxme::FxmeSlider outKnob      { processor.getAPVTS(), dede::ids::outLevel, "Output",  dede::theme::accent };
+    fxme::FxmeSlider kneeKnob     { processor.getAPVTS(), dede::ids::gateKnee, "Knee",    dede::theme::accent };
     fxme::FxmeSlider roomKnob     { processor.getAPVTS(), dede::ids::revRoom,  "Room",    dede::theme::specViolet };
     fxme::FxmeSlider dampKnob     { processor.getAPVTS(), dede::ids::revDamp,  "Damping", dede::theme::specViolet };
     fxme::FxmeSlider widthKnob    { processor.getAPVTS(), dede::ids::revWidth, "Width",   dede::theme::specViolet };

@@ -10,9 +10,19 @@ note anything a consumer can observe in `lib/FxmeTools/doc/api-changes.md`.
 Of the feature items (second half of this file), 6, 7 and 11 live in Dede's
 `Source/` only. The others also change FxmeTools (the splitter,
 `fxme::StereoCrossDelay`, `fxme::SpectrumRegionEditor`, or a new core class),
-with the same rules as above. Items 6, 7, 9, 12, 13, 14 and 15 all add
-parameters: do their state migrations as one version bump (version 2) if they
-land in the same release, or one bump each otherwise.
+with the same rules as above.
+
+**Parameters and saved state.** Items 6, 7, 9, 12, 13, 14 and 15 add
+parameters. Dede has not been released, so there is no state migration to
+write: the parameter layout will be tagged as version 1 at the first release,
+and migrations start after that. One thing still applies before release:
+`AudioProcessorValueTreeState::replaceState` (used by `setStateInformation`
+and by the preset manager) leaves a parameter that is missing from the loaded
+tree at its *current* value, not its default. A factory preset saved before a
+parameter existed therefore inherits whatever the user last set. Re-save the
+factory presets whenever parameters are added.
+
+Done items are moved to `doc/done.md`, keeping their numbers.
 
 ## Context
 
@@ -140,12 +150,8 @@ exists.
    `setFftSizeLocked (true)`: the badge becomes a read-out and the combo is the
    control. (Making the badge itself the control would need an
    `onFftOrderChanged` callback added to `fxme::SpectrumDisplay`.)
-5. **State.** `AudioProcessorValueTreeState::replaceState` leaves parameters
-   that are missing from the loaded tree at their current value, not their
-   default. A version-1 session or preset loaded after the user picked 8192
-   would therefore stay at 8192. Bump the state `version` attribute to 2, and
-   in `setStateInformation` set the new parameter to its default when loading
-   version 1. Check the factory presets load at 2048.
+5. **Presets.** Re-save the factory presets so they carry the new parameter
+   (see the note at the top), and check they load at 2048.
 6. **Docs.** Update `doc/architecture.md` (the latency paragraph that names
    `splitterFftOrder`) and the info-button text.
 
@@ -182,12 +188,10 @@ recomputes two coefficients), so this needs no FxmeTools change.
    `splitter.setGateTimes()` with the two values, converted to seconds. Cheap
    enough to do every block; or only when either value changed.
 3. **Editor.** Two knobs (`fxme::FxmeSlider`, see the `fxme-juce-controls`
-   skill) near the gate controls, or in the region popup's header if space is
-   tight. Show milliseconds.
-4. **State.** The defaults equal the current hard-coded times, so old sessions
-   sound the same. Handle them in the same version-1 migration as item 6
-   (reset both to their defaults when loading version 1), for the same
-   `replaceState` reason.
+   skill) next to the Knee knob in the bottom row (item 9 put it just left of
+   the reverb group, as the start of a gate section). Show milliseconds.
+4. **Presets.** The defaults equal the current hard-coded times, so nothing
+   changes by default. Re-save the factory presets (see the note at the top).
 5. **Note.** The time constants are applied per hop, so their resolution is
    one hop (about 11 ms at 2048 points, more at larger sizes). An attack below
    one hop is effectively instant. Worth saying in the info text, and a reason
@@ -206,120 +210,6 @@ FxmeTools change (`SpectralBandSplitter`: a per-band smoothed-level array and a
 setter), so it needs a core test and an `api-changes.md` entry. Costs one
 multiply-add per bin per region per hop, and it delays the gate's opening on
 attacks by roughly the time constant.
-
-### 9. A ceiling line per region (the gate's mirror)
-
-*Not mandatory. Planned.*
-
-A second dashed line per region, on the same dB axis as the gate. Bins louder
-than it are removed, just as the gate removes bins quieter than its own line,
-so a region keeps only the part of its band whose level sits between the two
-lines. Typical use: send only the quiet material (tails, breath, room noise)
-to the delay and leave the loud notes dry. At the top of the range (the
-default) the ceiling is off, as the gate is open at the floor.
-
-This is not ducking in the sidechain sense (delays attenuated while the dry
-signal is loud): that remains a separate idea.
-
-**Behaviour: cut.** Bins above the line go to zero (with the gate's attack and
-release), which mirrors the gate and reuses its code. A *clamp* mode (bins
-above the line are brought down to it, a per-band spectral limiter that tames
-resonances without leaving holes) could come later as a per-region choice.
-
-**DSP (`fxme::SpectralBandSplitter`, FxmeTools).**
-
-1. Add `ceilingDb` to `fxme::SpectralBand`, defaulting to a value meaning off
-   (mirror of `openGateDb`), so other plugins see no change.
-2. Replace the binary per-bin target with a product of two curves:
-
-   ```
-   target = rise (level; gate, knee) * (1 - rise (level; ceiling, knee))
-   ```
-
-   where `rise` goes from 0 to 1 across a window of `knee` dB centred on the
-   threshold (a smoothstep; knee 0 is today's hard switch). Attack and release
-   keep smoothing the gain towards that target over time, so the knee and the
-   timing complement each other.
-3. Add `setGateKnee (float db)`, one value shared by both lines.
-4. Cost: keep comparing squared magnitudes against precomputed squared edges
-   (below the gate knee, above the ceiling knee, fully inside), and compute a
-   logarithm only for bins that fall inside a knee. Skip the ceiling entirely
-   when it is off, as the gate is skipped when open.
-5. A ceiling at or below the gate is an empty window: the region is silent.
-   Consistent, and the editor prevents it (automation can still do it).
-6. Core test (hard knee reproduces today's gate exactly, ceiling off changes
-   nothing, a tone above the ceiling is removed, knee gives a partial gain),
-   and an `api-changes.md` entry.
-
-**Editor (`fxme::SpectrumRegionEditor`, FxmeTools).**
-
-1. Opt-in: `setCeilingEnabled (true)`, off by default, so the other plugins
-   using this component are unchanged. `Region` gains `ceilingDb`, with a
-   `setCeilingRange()` like `setGateRange()`, and `Handle` gains `ceiling`.
-2. Drawn dashed like the gate, with a different dash pattern (or dimmer) so
-   the two cannot be confused. Its label goes *above* its line and the gate's
-   label *below* its line (today it is above), so the two labels never collide
-   when the lines are close.
-3. **Push on drag.** The dragged line always follows the mouse. If it comes
-   within 10 px of the other line, it pushes that line ahead of it, keeping
-   the 10 px gap; it stops only when the pushed line reaches the end of its
-   range. No memory: dragging back does not return the pushed line.
-4. **Hit test by proximity (midpoint rule).** Pixels are not a stable
-   constraint: zooming the dB window, automation or a preset can bring the
-   lines closer than 10 px (or together). So `hitTestRegion()` must not rely on
-   the gap. Within a region's horizontal span, collect every horizontal line
-   within `lineGrabPx` of the pointer (gate, ceiling, and the gain line, which
-   is on its own axis but can sit at the same height), and take the nearest.
-   When the gate and the ceiling are both within reach, use the midpoint
-   between them: above it grabs the ceiling, below it grabs the gate. Either
-   line can then always be caught as soon as they are a couple of pixels
-   apart, whatever the zoom. This replaces today's fixed order (gate tested
-   before the gain line).
-5. `onRegionChanged` already carries the whole region, so the consumer gets
-   the ceiling with no new callback.
-
-**Dede.**
-
-1. A per-region parameter `rgCeil` ("R1 Ceiling", `gateFloorDb` to
-   `gateCeilDb`, default at the top, displayed "off" there), and a global
-   "Gate knee" (0 to 24 dB, default 0). The knee sits with the attack and
-   release of item 7 as a small gate section, rather than in the region popup.
-2. `updateBands()` passes the ceiling (mapped to the splitter's off value at
-   the top of the range, as the gate is mapped to `openGateDb` at the floor);
-   `processBlock` passes the knee.
-3. The region popup gets a ceiling field next to the gate.
-4. State: same version-2 migration as items 6 and 7, so older sessions load
-   with every ceiling off and a hard knee.
-5. `setCeilingEnabled (true)` on the region editor, and the info text.
-
-### 10. Hover highlight on the region handles
-
-*Implemented 2026-09-27 in FxmeTools (`SpectrumRegionEditor`), pending test in
-Dede. Remove this item once tested and committed.*
-
-When the pointer is over a handle, draw that handle highlighted, so it is clear
-which one a press will grab. This matters most when lines are close (gate,
-ceiling and gain line at similar heights), and pairs with the midpoint hit
-test of item 9.
-
-Half of it exists: `SpectrumRegionEditor::mouseMove()` already stores the
-handle under the pointer in `hover` and repaints when it changes, but
-`drawRegion()` never reads `hover`. To finish it (FxmeTools):
-
-1. Pass the hover state to `drawRegion()` and, for the hovered handle only,
-   draw it emphasised: the gate (and later the ceiling) line thicker and at
-   full alpha; the gain line thicker and the gain/pan round handle brighter
-   with a ring; the left or right border thicker. Show that line's value label
-   on hover even when the region is not selected (today labels appear only on
-   the selected region).
-2. Keep the highlight on the handle being dragged for the whole drag, even when
-   the pointer moves off it (use the drag's hit, not `hover`, while a drag is
-   in progress).
-3. Clear `hover` in `mouseExit()`, or the last handle stays highlighted when
-   the pointer leaves the component.
-4. Colours from the region's own colour (`brighter()` / alpha), no new theme
-   entry, so every consumer of the component gets it for free. Mention it in
-   `api-changes.md` as a visible change.
 
 ### 11. Region popup tabs
 
@@ -419,7 +309,7 @@ the same pitch (a climbing shimmer is item 13b).
   tracked phases, so it sounds like a reverb confined to the band rather than
   a smear.
 
-Order inside the frame, per region: gate (and ceiling, item 9) -> freeze or
+Order inside the frame, per region: gate and ceiling -> freeze or
 blur (magnitudes) -> pitch (remapping) -> inverse FFT.
 
 **Structure (FxmeTools core).** Do not grow `SpectralBandSplitter` with all of
@@ -525,7 +415,7 @@ Free-slot rows show dimmed, with only the slot number (no controls enabled).
 
 **Gate meter.** Shows how open the region's gate is: the average of the
 per-bin gate gains over the region's bins, 0 (all closed) to 1 (all open),
-which with item 9 also reflects the ceiling. The splitter already holds those
+which also reflects the ceiling. The splitter already holds those
 gains (`gateGain`); it needs to publish the average per band, once per hop,
 through a `std::atomic<float>` read by the GUI timer (FxmeTools change,
 `getGateOpenness (band)`). Drawn as a small bar, or a lamp whose brightness
@@ -544,7 +434,7 @@ preferred.
 - Clicking a row selects that region in the spectrum view, and selecting a
   region in the view highlights its row.
 - Hovering a row could highlight the region's rectangle in the view (and the
-  other way round), in the spirit of item 10.
+  other way round), in the spirit of item 10 (done, see `doc/done.md`).
 
 **Layout.** Column about 150 to 180 px wide, taken from the left of the area
 above the global knobs (`resized()` in `PluginEditor.cpp`), rows sharing the
@@ -560,9 +450,11 @@ delay (and its degrade and spectral state) before the first block. The reset
 is a buffer clear, realtime-safe but not free (up to 6 s x 2 lines of
 samples), so do it on the rising edge only.
 
-**State.** New parameters `rgActive`, `rgMute`, `rgSolo`, `rgKeep` go into the
-same version-2 migration as items 6, 7 and 9 (older sessions load with every
-region on, unmuted, not soloed, keep-in-band off).
+**Presets.** New parameters `rgActive`, `rgMute`, `rgSolo`, `rgKeep`, with
+defaults that change nothing (on, unmuted, not soloed, keep-in-band off).
+Re-save the factory presets (see the note at the top). Mute and solo are saved
+in presets like every other parameter (decided 2026-09-27): a preset recalls
+the sound as it was heard.
 
 ## Verifying a change
 
