@@ -32,6 +32,7 @@
   <PARAM id="rg0_bits" value="8"/>
   <PARAM id="rg0_dson" value="0"/>
   <PARAM id="rg0_dsf" value="4"/>
+  <PARAM id="rg0_keep" value="0"/>
   <PARAM id="rg0_pshon" value="0"/>
   <PARAM id="rg0_pshst" value="0"/>
   <PARAM id="rg0_frzon" value="0"/>
@@ -61,6 +62,7 @@
   <PARAM id="rg1_bits" value="8"/>
   <PARAM id="rg1_dson" value="0"/>
   <PARAM id="rg1_dsf" value="4"/>
+  <PARAM id="rg1_keep" value="0"/>
   <PARAM id="rg1_pshon" value="0"/>
   <PARAM id="rg1_pshst" value="0"/>
   <PARAM id="rg1_frzon" value="0"/>
@@ -90,6 +92,7 @@
   <PARAM id="rg2_bits" value="8"/>
   <PARAM id="rg2_dson" value="0"/>
   <PARAM id="rg2_dsf" value="4"/>
+  <PARAM id="rg2_keep" value="0"/>
   <PARAM id="rg2_pshon" value="0"/>
   <PARAM id="rg2_pshst" value="0"/>
   <PARAM id="rg2_frzon" value="0"/>
@@ -119,6 +122,7 @@
   <PARAM id="rg3_bits" value="8"/>
   <PARAM id="rg3_dson" value="0"/>
   <PARAM id="rg3_dsf" value="4"/>
+  <PARAM id="rg3_keep" value="0"/>
   <PARAM id="rg3_pshon" value="0"/>
   <PARAM id="rg3_pshst" value="0"/>
   <PARAM id="rg3_frzon" value="0"/>
@@ -148,6 +152,7 @@
   <PARAM id="rg4_bits" value="8"/>
   <PARAM id="rg4_dson" value="0"/>
   <PARAM id="rg4_dsf" value="4"/>
+  <PARAM id="rg4_keep" value="0"/>
   <PARAM id="rg4_pshon" value="0"/>
   <PARAM id="rg4_pshst" value="0"/>
   <PARAM id="rg4_frzon" value="0"/>
@@ -177,6 +182,7 @@
   <PARAM id="rg5_bits" value="8"/>
   <PARAM id="rg5_dson" value="0"/>
   <PARAM id="rg5_dsf" value="4"/>
+  <PARAM id="rg5_keep" value="0"/>
   <PARAM id="rg5_pshon" value="0"/>
   <PARAM id="rg5_pshst" value="0"/>
   <PARAM id="rg5_frzon" value="0"/>
@@ -206,6 +212,7 @@
   <PARAM id="rg6_bits" value="8"/>
   <PARAM id="rg6_dson" value="0"/>
   <PARAM id="rg6_dsf" value="4"/>
+  <PARAM id="rg6_keep" value="0"/>
   <PARAM id="rg6_pshon" value="0"/>
   <PARAM id="rg6_pshst" value="0"/>
   <PARAM id="rg6_frzon" value="0"/>
@@ -235,6 +242,7 @@
   <PARAM id="rg7_bits" value="8"/>
   <PARAM id="rg7_dson" value="0"/>
   <PARAM id="rg7_dsf" value="4"/>
+  <PARAM id="rg7_keep" value="0"/>
   <PARAM id="rg7_pshon" value="0"/>
   <PARAM id="rg7_pshst" value="0"/>
   <PARAM id="rg7_frzon" value="0"/>

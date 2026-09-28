@@ -106,6 +106,7 @@ private:
         std::atomic<float>* crushBits = nullptr;
         std::atomic<float>* dsOn      = nullptr;
         std::atomic<float>* dsFactor  = nullptr;
+        std::atomic<float>* keep      = nullptr;
 
         std::atomic<float>* pitchOn    = nullptr;
         std::atomic<float>* pitchSt    = nullptr;
@@ -171,6 +172,10 @@ private:
         saturation, bit-crush, downsample, each skipped when off. */
     void applyDegrade (int slot, float* x, int numSamples);
 
+    /** Band-passes one region's mono band back to its range (shifted by its
+        pitch, if on) when its "keep in band" switch is on; nothing when off. */
+    void applyKeepInBand (int slot, float* x, int numSamples);
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
 
@@ -187,6 +192,10 @@ private:
     juce::SmoothedValue<float> satDrive[dede::maxRegions];
     bool satWasOn[dede::maxRegions] {};
     bool dsWasOn[dede::maxRegions] {};
+
+    /** "Keep in band": 24 dB/octave on each side, after the degrade chain. */
+    fxme::EdgeBandPass keepFilters[dede::maxRegions];
+    bool keepWasOn[dede::maxRegions] {};
     fxme::Reverb reverb;
 
     /** The dry path is delayed by the splitter's latency so it stays lined up

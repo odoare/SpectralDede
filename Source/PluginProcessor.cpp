@@ -222,6 +222,11 @@ DedeAudioProcessor::createParameterLayout()
             AudioParameterFloatAttributes().withStringFromValueFunction (
                 [] (float x, int) { return "x" + String (x, x < 10.0f ? 2 : 1); })));
 
+        // Band-passes the region back to its own range after the degrade
+        // chain, which spreads energy outside it.
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgKeep), 1 }, slot + "Keep In Band", false));
+
         // ---- Spectral transforms: pitch, freeze, blur, all off ----------------
         layout.add (std::make_unique<AudioParameterBool> (
             ParameterID { id (ids::rgPitchOn), 1 }, slot + "Pitch On", false));
@@ -320,6 +325,7 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.crushBits = raw (ids::region (i, ids::rgCrushBits));
         r.dsOn     = raw (ids::region (i, ids::rgDsOn));
         r.dsFactor = raw (ids::region (i, ids::rgDsFactor));
+        r.keep     = raw (ids::region (i, ids::rgKeep));
 
         r.pitchOn    = raw (ids::region (i, ids::rgPitchOn));
         r.pitchSt    = raw (ids::region (i, ids::rgPitchSt));
@@ -402,6 +408,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         panR[i].setCurrentAndTargetValue (right);
 
         saturators[i].prepare (sampleRate);
+        keepFilters[i].prepare (sampleRate);
+        keepWasOn[i] = false;
         satDrive[i].reset (sampleRate, 0.02);
         downsamplers[i].reset();
         satWasOn[i] = dsWasOn[i] = false;
@@ -420,6 +428,8 @@ void DedeAudioProcessor::releaseResources()
         s.reset();
     for (auto& d : downsamplers)
         d.reset();
+    for (auto& f : keepFilters)
+        f.reset();
 }
 
 bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -533,6 +543,44 @@ void DedeAudioProcessor::panGains (int slot, float& left, float& right) const
                             * juce::MathConstants<float>::pi * 0.25f;
     left  = std::cos (theta);
     right = std::sin (theta);
+}
+
+void DedeAudioProcessor::applyKeepInBand (int slot, float* x, int numSamples)
+{
+    const auto& r = regions[slot];
+    const bool on = r.keep->load() > 0.5f;
+
+    if (on)
+    {
+        float low  = juce::jmin (r.fLo->load(), r.fHi->load());
+        float high = juce::jmax (r.fLo->load(), r.fHi->load());
+
+        // A pitch shift moves the band on purpose: follow the shifted range,
+        // or this would cancel the shift.
+        if (r.pitchOn->load() > 0.5f)
+        {
+            const float ratio = std::exp2 (r.pitchSt->load() / 12.0f);
+            low  *= ratio;
+            high *= ratio;
+        }
+
+        auto& filter = keepFilters[slot];
+
+        // Coming back on: start at the region's edges and from rest.
+        if (! keepWasOn[slot])
+        {
+            filter.setEdges (low, high, true);
+            filter.reset();
+        }
+        else
+        {
+            filter.setEdges (low, high);
+        }
+
+        filter.process (x, numSamples);
+    }
+
+    keepWasOn[slot] = on;
 }
 
 void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
@@ -657,6 +705,7 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
         float* band = bandBuffer.getWritePointer (0);
         juce::FloatVectorOperations::copy (band, splitter.getBandOutput (i, 0), numSamples);
         applyDegrade (i, band, numSamples);
+        applyKeepInBand (i, band, numSamples);
 
         float left = 0.0f, right = 0.0f;
         panGains (i, left, right);

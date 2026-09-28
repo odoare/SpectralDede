@@ -84,6 +84,7 @@ namespace ids
     inline constexpr const char* rgCrushBits = "bits";   // 1..24, fractional
     inline constexpr const char* rgDsOn     = "dson";    // bool
     inline constexpr const char* rgDsFactor = "dsf";     // hold length, 1..1024
+    inline constexpr const char* rgKeep     = "keep";    // bool, band-pass to the region's range
 
     // Spectral transforms (pitch, freeze, blur), per region.
     inline constexpr const char* rgPitchOn  = "pshon";   // bool

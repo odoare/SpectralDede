@@ -364,6 +364,7 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
                                           { ids::rgSatDrive,  "Drive" } } },
         { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } } },
         { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } } },
+        { ids::rgKeep,    "Keep in band", {} },   // a switch only: after the three stages
     };
 
     // Inside the splitter's frame: freeze or blur, then pitch.

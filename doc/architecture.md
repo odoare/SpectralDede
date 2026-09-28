@@ -1,4 +1,4 @@
-# Dede — architecture
+# Dede architecture
 
 Dede is an FX-Mechanics JUCE audio effect: a spectral multi-delay with a shared
 reverb. The user draws rectangular regions on a spectrum view; each region is a
@@ -56,6 +56,16 @@ region harder. The saturator's output is divided by its drive (unity for
 small signals), so the drive knob sets how hard the band clips, not how loud
 it comes out; its bias and sag are fixed per model (sag 0.5 except Standard,
 Class AB with a -0.1 overlap for its crossover notch).
+
+The degrade chain spreads energy outside the region (harmonics from the
+saturator, aliasing from bit-crush and downsample). Its **Keep in band**
+switch, last on the Degrade tab, band-passes the region back to its range
+right after the chain (`fxme::EdgeBandPass`: 24 dB per octave on each side,
+edges smoothed so dragging a border does not zipper). With the region's pitch
+shift on, it follows the *shifted* range, or it would cancel the shift. The
+slopes are much softer than the splitter's spectral mask, so a little of the
+spill remains near the edges, and a region narrower than about an octave loses
+some level at its centre (about 2 dB for half an octave).
 
 The reverb runs on every block whatever the sends are doing, so a tail keeps
 ringing after the region that fed it has been turned down or deleted.
@@ -202,8 +212,8 @@ from the region's output after `dry` and `dly`).
 
 Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
 `satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,
-default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4). All
-stages default to off.
+default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4),
+`keep` (keep in band). All default to off.
 
 Spectral, per region: `pshon`, `pshst` (-24 to +24 semitones, 0.01 steps),
 `frzon` (latched: captures the region's spectrum when switched on), `frzmod`

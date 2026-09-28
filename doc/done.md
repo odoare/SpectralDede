@@ -4,6 +4,50 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 14. Keep in band (2026-09-28)
+
+A per-region switch, **Keep in band** (`keep`, off by default), that
+band-passes the region back to its own frequency range after the degrade chain.
+Saturation adds harmonics above a region, bit-crush and downsample add
+aliasing everywhere; with the switch on, a region stays a frequency range.
+
+**Where.** On each region's mono band, right after the degrade chain and
+before the pan, so both the region's Dry output and its delay get the filtered
+signal. One filter per region (the band is mono there), not one per channel.
+The switch sits at the end of the Degrade tab, where it acts in the signal
+order (the plan put it in the region column of item 15, which does not exist
+yet; that column's button will bind the same parameter).
+
+**FxmeTools (core).** New `fxme::EdgeBandPass` (`dsp/EdgeBandPass.h`,
+header-only, in the module umbrella): a band-pass given by its two edges. A
+4th-order Butterworth high-pass at the lower edge and low-pass at the upper
+one, two `fxme::Biquad` sections each (Q 0.541 and 1.307), 24 dB per octave.
+Generic, hence in FxmeTools rather than in Dede.
+
+- The edges glide in log frequency (20 ms), and coefficients are only
+  recomputed when an edge actually moved, so dragging a border does not
+  zipper.
+- An edge at 20 Hz or 20 kHz (or near Nyquist) drops its stage: a region
+  spanning the whole range passes untouched, bit for bit.
+- A stage coming back after being dropped, and the whole filter when the
+  switch comes back on, start from rest at the current edges.
+- New test `core/tests/CoreEdgeBandPassTests.cpp`, 7 checks: 0.0 dB in band,
+  -51 dB two octaves above, -48 dB two octaves below, pass-through at full
+  range, settling after an edge moves.
+
+**With pitch on**, the filter follows the *shifted* range (edges times the
+pitch ratio), or it would cancel the shift.
+
+**Limits, documented rather than compensated.** The slopes are far softer than
+the splitter's spectral mask, so a little of the spill remains near the edges.
+A region narrower than about an octave loses some level at its centre, because
+the two slopes overlap: 1.9 dB for half an octave (tested).
+
+**Also.** Factory presets carry `keep` at 0; `architecture.md`, the help text
+and `api-changes.md` are updated. In the todo, item 13b notes how keep-in-band
+would go inside the delay loop, and item 15's Mute now describes the region's
+whole output (Dry and Delay), which predates it.
+
 ## 13. Spectral transforms tab: pitch, freeze, blur (2026-09-27)
 
 A third tab in the region popup, **Spectral**, with three effects that work on

@@ -228,7 +228,8 @@ use a longer window (80 to 100 ms) for octaves, and judge by ear.
 1. **Feedback hook in `fxme::StereoCrossDelay`** (FxmeTools): an optional
    insert on the fed-back signal (an interface pointer the consumer provides).
    The same hook serves degrade-in-the-loop (item 12) and keep-in-band in the
-   loop (item 14). Core test: no insert gives bit-identical output.
+   loop (item 14, done: another `fxme::EdgeBandPass` per channel inside the
+   loop, on the same edges). Core test: no insert gives bit-identical output.
 2. **Parameters (per region):** shimmer on, interval (semitones, float,
    default +12), amount (how much of the shifted signal goes into the
    feedback versus the unshifted one). In the Delay tab.
@@ -237,35 +238,6 @@ use a longer window (80 to 100 ms) for octaves, and judge by ear.
    most 0 dB, so the loop stays stable.
 4. `fxme::PitchShifter` smooths its ratio internally, so the interval can be
    moved without zipper noise.
-
-### 14. "Keep in band"
-
-*Not mandatory. Planned; the switch lives in the region column (item 15).*
-
-Keeps a region's processed signal inside the region's frequency range, by
-band-passing it along the region's edges after the time-domain processing.
-Without it, saturation adds harmonics above the band and bit-crush or
-downsample add aliasing everywhere; with it, a region stays a frequency range.
-
-1. **Filter.** High-pass at the lower edge and low-pass at the upper edge, from
-   `fxme::Biquad`, per channel: two biquads in series each side for 24 dB per
-   octave (12 dB per octave is too leaky for this). Coefficients recomputed
-   when the edges move (once per block, only if they changed), with the edges
-   smoothed so dragging a border does not zipper. Near the ends of the
-   spectrum, drop the stage that is out of range (no high-pass below 20 Hz,
-   no low-pass above 20 kHz).
-2. **Placement.** After the degrade chain (item 12), before the delay. When
-   the feedback hook of item 13b exists, also offer it inside the loop, so
-   repeats degraded or shifted in the loop stay in band too.
-3. **Spectral pitch (item 13).** The pitch shifter moves the band on purpose,
-   so the filter should follow the *shifted* edges (edges x ratio), not the
-   original ones. Otherwise keep-in-band would cancel the shift.
-4. **Honest limit.** A 24 dB per octave slope is much softer than the
-   splitter's spectral mask, so a little of the out-of-band content remains
-   near the edges. A region narrower than about an octave will also lose
-   level inside the band with a steep filter pair; document it rather than
-   compensate.
-5. Parameter: per region `rgKeep` (bool, default off). Off costs nothing.
 
 ### 15. Region column (left side of the editor)
 
@@ -286,16 +258,17 @@ visualisations:
   also saves its inverse FFT) but the delay keeps running, so tails decay
   naturally. The region stays in place and editable, drawn dimmed in the
   view.
-- **Mute.** New per-region parameter `rgMute`. Silences the region's output
-  *after* the delay (both its contribution to the wet sum and its reverb
-  send), while all processing continues, so unmuting comes back into running
+- **Mute.** New per-region parameter `rgMute`. Silences the region's whole
+  output (its Dry, its Delay, and so its reverb send, which is taken from
+  them), while all processing continues, so unmuting comes back into running
   tails. Short gain ramp to avoid clicks.
 - **Solo.** New per-region parameter `rgSolo`, non-automatable. When any
   region is soloed, every non-soloed region is treated as muted. Several
   solos can be on together. Solo does not touch the dry path (decide whether
   it should mute dry as well; a "solo mutes dry" behaviour is useful for
   auditioning one band, but surprising in a mix).
-- **Keep in band** (item 14). `rgKeep`.
+- **Keep in band** (item 14, done). `rgKeep` already exists and is on the
+  Degrade tab; the row's button binds the same parameter.
 
 The distinction to keep clear in the info text: *free* releases the slot,
 *off* stops the input (tails ring out), *mute* stops the output (processing
