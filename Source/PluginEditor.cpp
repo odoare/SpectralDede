@@ -51,7 +51,8 @@ namespace
         "Spectrum view:\n"
         "  wheel zooms the level axis, ctrl+wheel the frequency axis\n"
         "  alt+drag or middle-drag pans, double-click resets\n"
-        "  the window size is pinned to the one the gates are measured in\n\n"
+        "  the view measures exactly as the gates do (same window size, peak\n"
+        "    detector, no averaging), so a trace over a gate line passes it\n\n"
         "The bottom row holds the levels of the dry signal, the summed delays "
         "and the reverb return, the output trim, the gate knee, and the reverb "
         "itself. The knee (shared by every region) softens the gate and the "
@@ -92,11 +93,27 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     spectrum.addTrace ({ &processor.getInputTap(), theme::trace,
                          [] { return juce::String ("input"); }, 1.4f });
 
-    // The gate thresholds are per-bin levels measured in the splitter's own
-    // analysis window, so the view is pinned to that same window: otherwise a
-    // line drawn on the trace would not be the level the DSP compares against.
-    spectrum.setFftOrder (splitterFftOrder);
+    // The trace has to show exactly what the gates and ceilings compare
+    // against, so the view measures the way the splitter does:
+    //  - the same window size (followed in timerCallback when it changes);
+    //  - peak detector: where many bins share one point (the highs), the
+    //    point shows the loudest, so the trace is over a gate line exactly
+    //    when some bin there passes it (an average would draw a passing tone
+    //    under the line);
+    //  - no temporal averaging: the gate reacts to each frame as it is.
+    // All three are locked, so they cannot drift from the DSP from the GUI.
+    // The window is the same too (periodic Hann) and the dB scale is the
+    // splitter's (FxmeTools' CoreSplitterTests pins that the analyser reads a
+    // tone at exactly the gate's level).
+    spectrum.setFftOrder (processor.getFftOrder());
     spectrum.setFftSizeLocked (true);
+    {
+        auto view = spectrum.getViewState();
+        view.mode = fxme::SpectrumDisplay::Mode::peak;
+        view.averaging = false;
+        spectrum.setViewState (view);
+        spectrum.setMeasurementLocked (true);
+    }
 
     spectrum.setNumRegions (maxRegions);
     spectrum.setGainRange (minGainDb, maxGainDb);
@@ -354,6 +371,12 @@ void DedeAudioProcessorEditor::showPresetBrowser()
 void DedeAudioProcessorEditor::timerCallback()
 {
     refreshRegionsFromParameters (false);
+
+    // Follow the splitter's window once a new FFT size has been applied (it
+    // is applied asynchronously, so poll what the processor actually runs).
+    const int order = processor.getFftOrder();
+    if (order != spectrum.getFftOrder())
+        spectrum.setFftOrder (order);
 }
 
 void DedeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)

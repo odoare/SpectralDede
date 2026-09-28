@@ -4,6 +4,50 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 6. FFT size as a parameter, and a view that measures as the gates do (2026-09-28)
+
+The splitter's window is now a parameter, `fftSize` ("FFT Size": 1024, 2048,
+4096, 8192, 16384 points; default 2048, so nothing changes by default;
+non-automatable). Its control goes into the options window (item 16, next);
+until then it can be changed from the host's parameter list.
+
+**Applying it.** `prepareToPlay` reads the parameter. A change while running is
+scheduled by a parameter listener and applied on the message thread in
+`handleAsyncUpdate()`: `suspendProcessing (true)` (which waits for any block in
+flight), `configureSpectralEngine (order)` re-prepares the splitter, the
+spectral effects and the dry-path delay, and reports the new latency, then
+processing resumes. Expect about one window of silence at the switch, and
+hosts that only pick up the new latency on transport stop. Region settings
+survive (they are re-sent every block, and the gate thresholds depend on the
+window size). The GUI reads the splitter from the message thread too, so a
+re-prepare can never pull an array from under a meter.
+
+**The view measures exactly as the gates do**, as asked: the relative level of
+the trace and the gate and ceiling lines is now the real one.
+
+- **Window size.** The view follows the size the processor actually runs (the
+  editor polls `getFftOrder()`, since the change is applied asynchronously).
+- **Window and scale.** The analyser used a symmetric Hann window, the
+  splitter a periodic one (about 0.004 dB apart at 2048). The analyser now
+  uses the periodic one (FxmeTools); a new core test pins that it reads a
+  bin-centred tone at exactly the gate's level (0.0000 dB off at all five
+  sizes; the old window failed at the small ones).
+- **Detector.** Where many bins share one display point (the highs), "avg"
+  drew their power average, so a tone the gate lets through could be drawn
+  under the gate line. "peak" shows the loudest bin: the trace is over the
+  line exactly when some bin there passes. Dede now uses peak.
+- **Averaging.** The trace was smoothed over GUI frames; the gate reacts to
+  each frame as it is. Averaging is now off.
+- All three are locked, with a new opt-in `SpectrumDisplay::setMeasurementLocked`
+  (FxmeTools), like the existing FFT-size lock: the badges draw dimmed and
+  ignore clicks. If the trace is too jumpy, the honest cure is item 8 (smooth
+  the gate's detector, and the view with it), not smoothing the picture only.
+
+**Also.** Factory presets carry `fftSize` at 2048 (265 parameters each).
+`architecture.md` (latency, the reconfiguration path, the exact-measurement
+list), the help text and `api-changes.md` are updated; in the todo, items 16
+and 17 now point at the parts built here.
+
 ## Borders stick to other regions' borders (2026-09-28)
 
 Not a todo item. While a region's border is dragged, it sticks to another

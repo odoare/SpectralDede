@@ -92,6 +92,13 @@ DedeAudioProcessor::createParameterLayout()
         NormalisableRange<float> (-60.0f, 12.0f, 0.1f), 0.0f,
         AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
+    // ---- Engine ----------------------------------------------------------------
+    // The splitter's window: resolution against latency. Not automatable: it
+    // re-allocates and changes the latency, which must not come from a lane.
+    layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ids::fftSize, 1 }, "FFT Size", fftSizeNames, defaultFftSizeIndex,
+        AudioParameterChoiceAttributes().withAutomatable (false)));
+
     // ---- Spectral gate, shared by every region ------------------------------
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ids::gateKnee, 1 }, "Gate knee",
@@ -286,9 +293,73 @@ DedeAudioProcessor::DedeAudioProcessor()
     cacheParameterPointers();
     inputTap.setEnabled (true);
     splitter.setBandProcessor (&spectral);
+    apvts.addParameterListener (ids::fftSize, this);
 }
 
-DedeAudioProcessor::~DedeAudioProcessor() = default;
+DedeAudioProcessor::~DedeAudioProcessor()
+{
+    apvts.removeParameterListener (ids::fftSize, this);
+    cancelPendingUpdate();
+}
+
+//==============================================================================
+int DedeAudioProcessor::requestedFftOrder() const
+{
+    return fftOrderForChoice (juce::roundToInt (pFftSize->load()));
+}
+
+void DedeAudioProcessor::configureSpectralEngine (int order)
+{
+    splitter.prepare (sampleRate, preparedBlockSize, maxRegions, order);
+
+    // Each band leaves the splitter mono (gain applied, no pan) so the degrade
+    // chain treats both sides alike; the pan is applied after it.
+    splitter.setApplyPan (false);
+
+    // Pitch, freeze and blur run inside the splitter's frames, on its window
+    // and hop, so they are prepared from it.
+    spectral.prepare (splitter.getFftSize(), splitter.getHopSize(), sampleRate, maxRegions);
+
+    // The dry path waits for the splitter, so the two stay lined up, and the
+    // host is told the total.
+    const int latency = splitter.getLatencySamples();
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) preparedBlockSize, 2 };
+    dryDelay.setMaximumDelayInSamples (juce::jmax (1, latency));
+    dryDelay.prepare (spec);
+    dryDelay.setDelay ((float) latency);
+    dryDelay.reset();
+    setLatencySamples (latency);
+
+    // Orders 10 to 14 are inside the splitter's own range (8 to 14), so it
+    // runs at exactly the one asked for.
+    activeFftOrder.store (order);
+}
+
+void DedeAudioProcessor::parameterChanged (const juce::String& parameterID, float)
+{
+    // Can come from any thread, the audio thread included: only schedule.
+    if (parameterID == ids::fftSize)
+        triggerAsyncUpdate();
+}
+
+void DedeAudioProcessor::handleAsyncUpdate()
+{
+    // Before prepareToPlay there is nothing to re-prepare; it reads the
+    // parameter itself.
+    if (preparedBlockSize <= 0)
+        return;
+
+    const int order = requestedFftOrder();
+    if (order == activeFftOrder.load())
+        return;
+
+    // suspendProcessing takes the callback lock, so no block is in flight
+    // while the splitter re-allocates; the host gets silence meanwhile (about
+    // one window). The GUI reads the splitter from this same thread.
+    suspendProcessing (true);
+    configureSpectralEngine (order);
+    suspendProcessing (false);
+}
 
 void DedeAudioProcessor::cacheParameterPointers()
 {
@@ -307,6 +378,7 @@ void DedeAudioProcessor::cacheParameterPointers()
     pRevWidth = raw (ids::revWidth);
     pRevLevel = raw (ids::revLevel);
     pGateKnee = raw (ids::gateKnee);
+    pFftSize  = raw (ids::fftSize);
 
     for (int i = 0; i < maxRegions; ++i)
     {
@@ -352,16 +424,9 @@ void DedeAudioProcessor::cacheParameterPointers()
 void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
 {
     sampleRate = newSampleRate;
+    preparedBlockSize = samplesPerBlock;
 
-    splitter.prepare (sampleRate, samplesPerBlock, maxRegions, splitterFftOrder);
-
-    // Each band leaves the splitter mono (gain applied, no pan) so the degrade
-    // chain treats both sides alike; the pan is applied after it, here.
-    splitter.setApplyPan (false);
-
-    // Pitch, freeze and blur run inside the splitter's frames, on its window
-    // and hop, so they are prepared from it.
-    spectral.prepare (splitter.getFftSize(), splitter.getHopSize(), sampleRate, maxRegions);
+    configureSpectralEngine (requestedFftOrder());
 
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
@@ -387,14 +452,6 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     regionBuffer.clear();
     wetBuffer.clear();
     sendBuffer.clear();
-
-    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
-    dryDelay.setMaximumDelayInSamples (juce::jmax (1, splitter.getLatencySamples()));
-    dryDelay.prepare (spec);
-    dryDelay.setDelay ((float) splitter.getLatencySamples());
-    dryDelay.reset();
-
-    setLatencySamples (splitter.getLatencySamples());
 
     dryGain.reset (sampleRate, 0.02);
     wetGain.reset (sampleRate, 0.02);

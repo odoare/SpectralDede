@@ -7,10 +7,15 @@ The CPU items touch `fxme::SpectralBandSplitter`, which is in the FxmeTools
 submodule (`lib/FxmeTools/core/FxmeTools/dsp/SpectralBandSplitter.h`), so they
 are edits to the shared library: keep its API unchanged, add a core test, and
 note anything a consumer can observe in `lib/FxmeTools/doc/api-changes.md`.
-Of the feature items (second half of this file), 6, 7 and 11 live in Dede's
+Of the feature items (second half of this file), 7 and 16 live in Dede's
 `Source/` only. The others also change FxmeTools (the splitter,
 `fxme::StereoCrossDelay`, `fxme::SpectrumRegionEditor`, or a new core class),
 with the same rules as above.
+
+Items 7, 16 and 17 belong together with item 6 (done): 16 is an options
+window, and the settings of 6 (FFT size, whose control is still to be placed),
+7 (gate timing) and 17 (the live engine) are its contents. Build 16 first,
+with the FFT size in it, then add the others.
 
 **Parameters and saved state.** Items 6, 7, 9, 12, 13, 14 and 15 add
 parameters. Dede has not been released, so there is no state migration to
@@ -101,76 +106,12 @@ up at small buffer sizes while the average load looks fine.
 
 ## Features
 
-Background. The spectrum view's FFT-size badge is locked on purpose: the gate
-thresholds are per-bin levels measured in the splitter's own window
-(`dede::splitterFftOrder`, 2048 points), and the view is pinned to that window
-so a gate line sits at the level the DSP compares against
-(`Source/PluginEditor.cpp`, `setFftOrder` / `setFftSizeLocked`). The view's
-other controls do not map onto the gate: the avg/peak badge chooses how several
-bins merge into one plotted point (frequency, not time), and the avg / N badges
-smooth the picture at the GUI's 25 Hz refresh, whereas the gate compares raw
-per-bin magnitudes every hop (about 11 ms) and smooths only the gain it
-applies. Hence the two items below: make the window size a real parameter that
-the DSP and the view both follow, and expose the gate timing that actually
-exists.
-
-### 6. FFT size as a parameter
-
-*Not mandatory. Planned.*
-
-1. **Parameter.** Add `ids::fftSize` in `Source/ParamIDs.h`: an
-   `AudioParameterChoice` "Resolution" over 1024 / 2048 / 4096 / 8192 / 16384
-   (orders 10 to 14, the overlap of what the splitter, 8 to 14, and the
-   spectrum view, 10 to 15, accept), default 2048 so existing sessions sound
-   the same. Mark it non-automatable
-   (`AudioParameterChoiceAttributes().withAutomatable (false)`): changing it
-   re-allocates and changes the latency, which must not happen from an
-   automation lane. Replace the `splitterFftOrder` constant by a helper that
-   turns the choice index into an order, and keep `splitterFftOrder` as the
-   default.
-2. **prepareToPlay.** Read the parameter instead of the constant in
-   `splitter.prepare (...)`. The dry delay and `setLatencySamples()` already
-   follow `splitter.getLatencySamples()`, so they need no change there.
-3. **Changing it while running.** `splitter.prepare()` allocates, so it must
-   not run on the audio thread. Have the processor listen to the parameter
-   (`apvts.addParameterListener`) and, since the callback can come from any
-   thread, only `triggerAsyncUpdate()` there (make the processor a
-   `juce::AsyncUpdater`). In `handleAsyncUpdate()`, on the message thread:
-   `suspendProcessing (true)` (it takes the callback lock, so no block is in
-   flight), re-prepare the splitter at the new order with the current sample
-   rate and block size, then `spectral.prepare()` from the splitter's new FFT
-   and hop sizes (the pitch, freeze and blur state is sized from them, see
-   item 13 in `done.md`), re-prepare and re-delay `dryDelay`, call
-   `setLatencySamples()`, then `suspendProcessing (false)`. Skip it if the
-   order did not actually change, and if `prepareToPlay` has not run yet. The
-   band settings survive because `updateBands()` re-sends every band each block
-   (the gate threshold depends on the window size, so this matters).
-4. **Editor.** Add a combo box for the parameter (FxmeTools look-and-feel,
-   `setLookAndFeel()` on it, attached with a `ComboBoxAttachment`), near the
-   spectrum view. In the editor timer, when the parameter's order differs from
-   `spectrum.getFftOrder()`, call `spectrum.setFftOrder()`. Keep
-   `setFftSizeLocked (true)`: the badge becomes a read-out and the combo is the
-   control. (Making the badge itself the control would need an
-   `onFftOrderChanged` callback added to `fxme::SpectrumDisplay`.)
-5. **Presets.** Re-save the factory presets so they carry the new parameter
-   (see the note at the top), and check they load at 2048.
-6. **Docs.** Update `doc/architecture.md` (the latency paragraph that names
-   `splitterFftOrder`) and the info-button text.
-
-Things to know when testing:
-
-- Latency is one window: 21 ms at 1024, 43 ms at 2048, 170 ms at 8192, 341 ms
-  at 16384 (48 kHz). Most hosts accept a latency change while running; some
-  only pick it up on transport stop or re-activation. Try Reaper and Bitwig at
-  least.
-- Larger windows give narrower bands but smear transients (pre-echo before
-  attacks); smaller ones the opposite. CPU per sample is roughly constant.
-- A sine keeps its level at every size (the level convention is
-  `mag * 2 / fftSize`), but the noise floor per bin drops about 3 dB per
-  doubling. The same gate setting therefore gates noise differently at
-  different sizes. The view follows the size, so what is drawn stays right.
-- There is an audible gap of one window when the size changes. Acceptable for a
-  setting, but worth a sentence in the info text.
+Background. The spectrum view measures exactly as the gates do: the same
+window size (the `fftSize` parameter, item 6, done), the same window and dB
+scale, the peak detector and no temporal averaging, all locked (see
+`architecture.md`, "The view measures exactly as the gates do"). The gate
+itself compares raw per-bin magnitudes every hop (about 11 ms) and smooths
+only the gain it applies, with fixed times: item 7 exposes them.
 
 ### 7. Gate attack and release as parameters
 
@@ -190,8 +131,9 @@ recomputes two coefficients), so this needs no FxmeTools change.
    `splitter.setGateTimes()` with the two values, converted to seconds. Cheap
    enough to do every block; or only when either value changed.
 3. **Editor.** Two knobs (`fxme::FxmeSlider`, see the `fxme-juce-controls`
-   skill) next to the Knee knob in the bottom row (item 9 put it just left of
-   the reverb group, as the start of a gate section). Show milliseconds.
+   skill) in the options window (item 16, Gate section). Show milliseconds.
+   The same two parameters drive the live engine's band gates (item 17), so
+   they apply in both modes.
 4. **Presets.** The defaults equal the current hard-coded times, so nothing
    changes by default. Re-save the factory presets (see the note at the top).
 5. **Note.** The time constants are applied per hop, so their resolution is
@@ -206,8 +148,9 @@ recomputes two coefficients), so this needs no FxmeTools change.
 Smooth each bin's level before the threshold comparison (an exponential
 average of `magSq` across hops, time constant as a parameter), so the gate
 reacts to a sustained level rather than to every frame. Then set the view's
-averaging from the same parameter (N about τ / 40 ms, its 25 Hz frame) and lock
-those badges, so the plotted trace is the level the gate compares. This is an
+averaging from the same parameter (N about τ / 40 ms, its 25 Hz frame), so the
+plotted trace is the level the gate compares. Those badges are locked since
+item 6 (`setMeasurementLocked`): unlock, set the view state, lock again. This is an
 FxmeTools change (`SpectralBandSplitter`: a per-band smoothed-level array and a
 setter), so it needs a core test and an `api-changes.md` entry. Costs one
 multiply-add per bin per region per hop, and it delays the gate's opening on
@@ -238,6 +181,131 @@ use a longer window (80 to 100 ms) for octaves, and judge by ear.
    most 0 dB, so the loop stays stable.
 4. `fxme::PitchShifter` smooths its ratio internally, so the interval can be
    moved without zipper noise.
+
+### 16. Options window
+
+*Not mandatory. Planned; the home of items 6, 7 and 17.*
+
+A popup for the settings that shape how Dede works rather than what a region
+does: the engine (spectral or live), the FFT size, the gate timing, and the
+smoothing times. Opened from a **gear** button in the top bar, next to the
+preset browser's "..." button, the same way: a `juce::CallOutBox` anchored on
+the button, holding an `OptionsPanel` component (new `Source/OptionsPanel.{h,cpp}`).
+
+1. **Button.** A gear icon: draw it as a `juce::Path` (a toothed ring and a
+   hole) in a small `juce::DrawableButton` or a custom button, coloured like the
+   other top-bar chrome (`theme::accent`). Add it to
+   `topBar.setRightControls (...)` between the "..." button and the info
+   button. Tooltip "Options".
+2. **Panel.** Sections, each a heading and a few controls, laid out like the
+   region popup (`fxme::FxmeSlider` knobs, combo boxes with the look-and-feel,
+   `theme::styleCombo`):
+   - **Engine:** mode (Spectral / Live, item 17), FFT size (item 6, done: the
+     `fftSize` parameter exists and is applied live; add a combo box bound to
+     it with a `ComboBoxAttachment`, greyed in Live). A read-out line under
+     them: the resulting latency in ms and samples, and a one-line reminder of
+     what each mode gives up.
+   - **Gate:** attack and release (item 7), and the knee. The knee is on the
+     bottom row today; move it here too so all gate timing sits together, or
+     keep it on the bottom row as a sound-shaping control and only mirror it
+     here (decide; both are one attachment).
+   - **Smoothing:** the glide times that are hard-coded today, one parameter
+     each, with today's values as defaults so nothing changes:
+     - region gain and pan glide, 20 ms (`SpectralBandSplitter::setLevelSmoothingSeconds`,
+       and the pan smoothers in the processor);
+     - region output levels (Dry, Delay, Send) glide, 20 ms (the processor's
+       smoothers);
+     - border glide, 20 ms (`fxme::EdgeBandPass`'s smoothing: keep in band, and
+       the live engine's band filters);
+     - solo and free fade, 5 ms (`audibleGain`);
+     - delay-time glide, if `fxme::StereoCrossDelay`'s smoothed time exposes
+       its time constant (check `DelayLine`; an FxmeTools change otherwise).
+     Keep the list short: a smoothing nobody will ever want to change does not
+     earn a control.
+3. **Parameters.** All global, non-automatable (they re-allocate, change
+   latency, or are setup rather than performance). Saved with the session.
+   Presets: decide. Recalling the engine and FFT size with a preset follows
+   the rule that a preset recalls the sound as heard, but it also changes the
+   latency on preset load, which some hosts handle badly. A middle way is to
+   save them in presets but add a "load engine settings with presets" switch in
+   this same window, on by default.
+4. **Info text.** A short explanation per section, reachable from the panel
+   (an `fxme::InfoButton` in its corner), since these settings are the least
+   self-explanatory ones.
+
+### 17. Live engine (filter bank, zero latency)
+
+*Not mandatory. Planned. A second engine beside the spectral one, chosen in
+the options window (item 16); the spectral engine stays the default.*
+
+The spectral engine (the STFT splitter) costs one FFT window of latency, 43 ms
+at 2048 points. The live engine cuts the regions with filters instead:
+`fxme::EdgeBandPass` (24 dB per octave each side, already in core) per region,
+no FFT at all, so **zero latency** and much less CPU, for playing live. It
+gives things up, and the plugin should say so where the mode is chosen:
+
+| | Spectral (default) | Live |
+|---|---|---|
+| Latency | one FFT window (43 ms at 2048) | none |
+| CPU | 1 FFT + 1 inverse per region per hop | 4 biquads + a gate per region per sample (roughly 5 to 10 times less, to be measured) |
+| Gate and ceiling | per frequency bin: keep only the peaks of a band, or only its floor | per band: the whole band opens or closes (a multiband gate) |
+| Region edges | near brick-wall | 24 dB per octave: neighbours bleed, narrow regions lose level (about 2 dB at half an octave) |
+| Transients | softened by the window (pre-echo) | intact |
+| Spectral tab (pitch, freeze, blur) | yes | no (needs the FFT); greyed out with a note |
+| Region Dry added to the global dry | phase-aligned, clean | phase shifts near the edges: some colouring where the region's edges are |
+
+1. **Core: `fxme::FilterBankSplitter`** (new, FxmeTools core), the live twin
+   of `SpectralBandSplitter`, with the same outward API so Dede can switch
+   between them with little code: `prepare`, `setBand (SpectralBand)` (same
+   struct: edges, gate, ceiling, gain, pan), `setGateKnee`, `setGateTimes`,
+   `setApplyPan`, `process (mono, n)`, `getBandOutput`, `getGateOpenness`,
+   `getLatencySamples()` returning 0. Per band: an `EdgeBandPass` on the input,
+   then a band gate, then gain (and pan when applied). Consider a small
+   interface both splitters implement (`fxme::BandSplitter`), so the processor
+   holds one pointer to whichever is active.
+2. **Core: the band gate** (`fxme::BandGate`, new): a level detector on the
+   band (RMS over a few ms, in dB) against the gate and ceiling thresholds,
+   with the same knee (a smoothstep over the level in dB) and the same attack
+   and release (per sample here, so an attack under 11 ms finally means
+   something). Target gain `rise (gate) x (1 - rise (ceiling))` as in the
+   spectral splitter, so a region's settings mean the same thing in both
+   modes, only at a coarser grain. Openness for the meter is the gate gain
+   itself. Core tests: threshold, knee, attack and release times, ceiling,
+   and the splitter's band levels against `EdgeBandPass` alone.
+3. **The gate line on the spectrum.** In live mode the gate compares the
+   *band's* level, not a bin's, and the two differ (a band's level sums many
+   bins). A line drawn on the spectrum trace would sit at the wrong place. Add
+   an optional per-region level marker to `fxme::SpectrumRegionEditor` (a short
+   tick or bar inside the rectangle at the band's current level, fed by the
+   consumer from the splitter), shown in live mode, so the gate and ceiling
+   are set against the level they are compared to. FxmeTools change, opt-in.
+4. **Switching engines.** Non-automatable global parameter `engine`
+   (Spectral / Live). Extend the path built for the FFT size (item 6, done:
+   the processor's `parameterChanged` -> `handleAsyncUpdate` ->
+   `configureSpectralEngine`, with processing suspended): listen to `engine`
+   too, and prepare the engine being switched to, reset the regions
+   (`resetRegion`), set the dry delay to the new latency (0 in live) and
+   `setLatencySamples()`. Expect a short gap, and
+   hosts that only pick up the latency change on transport stop.
+5. **Processor.** `processChunk` takes each region's mono band from the active
+   splitter; everything after it (degrade, keep in band, pan, Dry, delay,
+   send, solo, meters) is shared and unchanged. The spectral effects are
+   skipped in live mode (the Spectral tab's switches have no effect, and the
+   tab says so).
+6. **Region Dry in live mode.** The band-pass's phase shift makes a region's
+   Dry colour the sound near its edges when added to the global dry. Document
+   it. (If it matters in practice: a matching all-pass on the global dry
+   cannot fix eight overlapping arbitrary bands, so there is no cheap cure.)
+7. **Presets and docs.** New parameters at their defaults in the factory
+   presets (spectral mode, so nothing changes), `architecture.md` (a section
+   on the two engines and the table above), the help text, `api-changes.md`
+   for the two core classes and the level marker.
+
+Possible later, complementary rather than competing: in the spectral engine,
+report zero latency and shorten each region's delay line by the FFT latency, so
+the repeats still land on time and the global dry is undelayed. Delay times
+under one window then become unreachable, and a region's Dry comes out one
+window late. A third option for live use that keeps per-bin gating.
 
 ## Verifying a change
 

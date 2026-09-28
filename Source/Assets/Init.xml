@@ -8,6 +8,7 @@
   <PARAM id="revDamp" value="0.5"/>
   <PARAM id="revWidth" value="1"/>
   <PARAM id="revLevel" value="0"/>
+  <PARAM id="fftSize" value="1"/>
   <PARAM id="gateKnee" value="0"/>
   <PARAM id="rg0_on" value="0"/>
   <PARAM id="rg0_act" value="1"/>

@@ -131,16 +131,40 @@ Three consequences shape the rest of the design:
   pan rather than a balance: the band it emits is mono until it is panned.
 - Gain and pan are applied to the region's time-domain output through smoothed
   values, not to its bins. Moving them is click-free and costs no transform.
-- The splitter delays by exactly one window (`dede::splitterFftOrder`, 2048
-  samples, 43 ms at 48 kHz). The dry path is delayed by the same amount with a
+- The splitter delays by exactly one window: the `fftSize` parameter, 1024 to
+  16384 points, default 2048 (43 ms at 48 kHz; 21 ms at 1024, 341 ms at
+  16384). The dry path is delayed by the same amount with a
   `juce::dsp::DelayLine`, and the total is reported with `setLatencySamples`,
-  so the host puts everything back in place.
+  so the host puts everything back in place. Larger windows give narrower
+  regions and smear transients more; the noise floor per bin also drops about
+  3 dB per doubling, so the same gate setting gates noise differently at
+  different sizes.
 
-The gate threshold is a per-bin level in the dB convention of
-`fxme::SpectrumAnalyzer`. The two only agree exactly when the view and the
-splitter run the same window size, so the editor is to pin the view to the
-splitter's size rather than leave it on the display's own default (step 3,
-which is where the gate becomes drawable in the first place).
+Changing the size while running re-allocates, so it never happens on the audio
+thread: a parameter listener schedules an async update, and on the message
+thread `handleAsyncUpdate()` suspends processing (which waits for any block in
+flight), re-prepares the splitter, the spectral effects and the dry delay at
+the new size (`configureSpectralEngine`), reports the new latency, and resumes.
+The host gets about one window of silence, and some hosts only pick up the new
+latency on transport stop. The parameter is not automatable.
+
+**The view measures exactly as the gates do.** The gate threshold is a
+per-bin level in the dB convention of `fxme::SpectrumAnalyzer`, and the editor
+locks every way the view could measure differently:
+
+- the same window size (followed when `fftSize` changes);
+- the same window (periodic Hann) and dB scale: FxmeTools' tests pin that the
+  analyser reads a tone at the splitter's level to 0.001 dB, at every size;
+- the peak detector: where many bins share one point (the highs), the point
+  shows the loudest, so the trace is over a gate line exactly when some bin
+  there passes it. The average detector would draw a passing tone under the
+  line;
+- no temporal averaging: the gate reacts to each frame as it is, so the trace
+  does too.
+
+The spectrum display's badges for these are locked (drawn dimmed). If the
+trace is too jumpy to read, the honest cure is to smooth the gate's own
+detector and the view with it (todo item 8), not the picture alone.
 
 ## Where code lives
 

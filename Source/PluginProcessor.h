@@ -28,7 +28,9 @@
 #include "ParamIDs.h"
 
 //==============================================================================
-class DedeAudioProcessor : public juce::AudioProcessor
+class DedeAudioProcessor : public juce::AudioProcessor,
+                           private juce::AudioProcessorValueTreeState::Listener,
+                           private juce::AsyncUpdater
 {
 public:
     DedeAudioProcessor();
@@ -72,6 +74,10 @@ public:
     /** Frequency of the most recent MIDI note received, or 0 if none yet.
         MIDI-note mode multiplies its period by the region's delay value. */
     float getLastNoteHz() const noexcept                     { return lastNoteHz.load(); }
+
+    /** The FFT order the splitter is running at (the `fftSize` parameter once
+        applied). The spectrum view follows it; any thread. */
+    int getFftOrder() const noexcept                         { return activeFftOrder.load(); }
 
     /** A region's output level in dBFS (RMS over 100 ms), channel 0 or 1,
         measured before the solo gain. For the region column's meters; any
@@ -129,6 +135,24 @@ private:
 
     void cacheParameterPointers();
 
+    //==========================================================================
+    // FFT size. The parameter is read by prepareToPlay, and a change while
+    // running is applied on the message thread (it re-allocates).
+
+    /** The FFT order the `fftSize` parameter asks for. */
+    int requestedFftOrder() const;
+
+    /** (Re)prepares everything sized by the FFT: the splitter, the spectral
+        effects, the dry path's delay, and the reported latency. Message
+        thread, with processing suspended or not yet started. */
+    void configureSpectralEngine (int order);
+
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
+    void handleAsyncUpdate() override;
+
+    std::atomic<int> activeFftOrder { dede::splitterFftOrder };
+    int preparedBlockSize = 0;
+
     /** Pulls tempo from the host and the last note number out of the MIDI
         buffer, so the delay-time modes have something to work from. */
     void updateTransportAndMidi (const juce::MidiBuffer& midi);
@@ -145,6 +169,7 @@ private:
     std::atomic<float>* pRevWidth = nullptr;
     std::atomic<float>* pRevLevel = nullptr;
     std::atomic<float>* pGateKnee = nullptr;
+    std::atomic<float>* pFftSize  = nullptr;
 
     /** Mono-sums the input into monoBuffer: what the spectrum view shows and
         what the band splitter is fed are then one and the same signal, which

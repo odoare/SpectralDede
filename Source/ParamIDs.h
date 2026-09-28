@@ -57,6 +57,7 @@ namespace ids
     inline constexpr const char* revLevel   = "revLevel";     // dB, reverb return
 
     inline constexpr const char* gateKnee   = "gateKnee";     // dB, gate/ceiling transition
+    inline constexpr const char* fftSize    = "fftSize";      // choice, see fftSizeNames
 
     // Per-region suffixes (see the file header for the naming scheme).
     inline constexpr const char* rgOn    = "on";      // region slot in use
@@ -156,9 +157,22 @@ inline constexpr float maxDelayValue = 3.0f;
 /** Analysis window of the spectral band splitter, as an FFT order: 11 is 2048
     samples, about 23 Hz of resolution and 43 ms of latency at 48 kHz. It is
     also the plugin's reported latency, and the window the gate thresholds are
-    measured in — the spectrum view is told to use the same one so the gate
-    line sits where it looks like it sits. */
+    measured in; the spectrum view follows it so the gate line sits where it
+    looks like it sits. Chosen with the `fftSize` parameter; this is its
+    default. */
 inline constexpr int splitterFftOrder = 11;
+
+/** The `fftSize` choice: 1024 to 16384 points (orders 10 to 14, what both the
+    splitter and the spectrum view accept). */
+inline const juce::StringArray fftSizeNames { "1024", "2048", "4096", "8192", "16384" };
+inline constexpr int minChoiceFftOrder = 10;
+inline constexpr int defaultFftSizeIndex = splitterFftOrder - minChoiceFftOrder;
+
+inline int fftOrderForChoice (int index)
+{
+    return juce::jlimit (minChoiceFftOrder, minChoiceFftOrder + fftSizeNames.size() - 1,
+                         minChoiceFftOrder + index);
+}
 
 /** Longest delay any line can be asked for, in seconds: the delay buffers are
     sized for this once, in prepareToPlay. Sync and MIDI-note modes can ask for
