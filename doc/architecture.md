@@ -103,7 +103,8 @@ enabled Dede is a gain stage.
 
 Regions are not bandpass filters. The splitter runs one short-time Fourier
 transform over the input (`fxme::SpectralBandSplitter`, periodic Hann, 75 %
-overlap-add, one analysis FFT per hop and one inverse FFT per active region),
+overlap-add, one analysis FFT per hop and one inverse FFT per active region
+that has something to output),
 and a region is a set of bins plus a per-bin gate: inside its interval, bins
 quieter than the gate threshold are muted and the rest pass. That is what lets
 a region take only the peaks of its band, or only its noise floor, which no

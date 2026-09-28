@@ -4,6 +4,53 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 1, 2, 3, 4. Splitter CPU (2026-09-28)
+
+Changes in `fxme::SpectralBandSplitter` (FxmeTools), same API, same output to
+float rounding. Measured at 2048 points, 8 regions, 48 kHz, 128-sample
+blocks, in % of one core:
+
+| case                        | before | after |
+|-----------------------------|-------:|------:|
+| 8 wide regions, open        |   1.32 |  0.98 |
+| 8 narrow regions, open      |   1.21 |  0.77 |
+| 8 regions, gate closed      |   1.70 |  0.54 |
+| 1 region                    |   0.41 |  0.24 |
+| no region enabled           |   0.26 |  0.12 |
+
+**2. Only touch the bins inside each region.** A region's frame is zeroed
+around its bins, and only the bins `kLo..kHi` are copied, masked and gated.
+Only the non-negative half is written, since that is all the inverse transform
+reads (the mirror writes are gone too). The care point from the todo is
+handled by keeping each region's gate gains at 0 outside its bins: when its
+edges move, the bins it leaves are cleared, so a bin that enters later starts
+closed, as before.
+
+**3. Skip the inverse FFT when a region's frame is silent.** Detected for free
+in the mask loop. For it to trigger on a closed gate, a gate gain now snaps to
+0 once its release falls under -100 dB (it used to approach 0 forever). A
+spectral effect that sounds on its own (freeze, blur tail) is still heard: the
+frame is checked again after the effect, and only skipped if still empty.
+
+**4. Remove the modulo from the history copy.** Two straight loops.
+
+**Not in the todo: the output loop.** It ran per sample over all 8 regions,
+enabled or not, which with nothing enabled was most of the splitter's cost. It
+now runs per region over runs of samples up to the next hop, with a constant
+gain when the gain is not gliding.
+
+**1. Two regions per inverse FFT: dropped.** It was written when the inverse
+was a scalar complex FFT. Since the move to WDL's real FFT, a real inverse of
+2048 points takes about 7.4 µs and WDL's complex one about 12-13 µs, so
+pairing two regions into one complex transform saves 2 µs at best, before
+packing the two spectra and splitting the result. Not worth the code.
+
+Checks: core test group 10 (a closed gate gives exact zeros; a processor that
+sounds on silent input is heard); an A/B harness against the previous splitter
+on noise and tones with random block sizes, moving edges, sub-bin and disabled
+regions and silence, at 1024 to 8192 points and knees 0 and 12 dB: every
+difference at least 130 dB below the signal.
+
 ## 6. FFT size as a parameter, and a view that measures as the gates do (2026-09-28)
 
 The splitter's window is now a parameter, `fftSize` ("FFT Size": 1024, 2048,

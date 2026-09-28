@@ -3,9 +3,9 @@
 Improvements that are known and scoped but not required. Dede works without
 any of them. Each item is marked with its priority and where the code lives.
 
-The CPU items touch `fxme::SpectralBandSplitter`, which is in the FxmeTools
-submodule (`lib/FxmeTools/core/FxmeTools/dsp/SpectralBandSplitter.h`), so they
-are edits to the shared library: keep its API unchanged, add a core test, and
+The CPU item touches `fxme::SpectralBandSplitter`, which is in the FxmeTools
+submodule (`lib/FxmeTools/core/FxmeTools/dsp/SpectralBandSplitter.h`), so it
+is an edit to the shared library: keep its API unchanged, add a core test, and
 note anything a consumer can observe in `lib/FxmeTools/doc/api-changes.md`.
 Of the feature items (second half of this file), 7 and 16 live in Dede's
 `Source/` only. The others also change FxmeTools (the splitter,
@@ -31,66 +31,14 @@ Done items are moved to `doc/done.md`, keeping their numbers.
 
 ## Context
 
-CPU use was dominated by the FFT. `fxme::RealFft` used to run a scalar complex
-FFT on real input; on 2026-09-26 it was moved onto WDL's real FFT (about 10x
-faster for a forward + inverse pair at 2048 points). The items below are what
-is left after that change, in order of expected gain.
-
-The splitter's cost per hop (512 samples at the default 2048-point window,
-75% overlap) is one forward FFT plus one inverse FFT per enabled region, so up
-to 9 transforms with `maxRegions = 8`, plus a few full-spectrum passes per
-region.
+CPU use was dominated by the FFT. `fxme::RealFft` moved onto WDL's real FFT on
+2026-09-26 (about 10x faster), and on 2026-09-28 the splitter stopped doing
+work that only produced zeros (items 2, 3 and 4, see `doc/done.md`; item 1 was
+measured and dropped there too). What is left of the splitter's cost is
+essentially one inverse FFT per region with something to output, about
+0.1 % of a core each at 2048 points and 48 kHz.
 
 ## CPU
-
-### 1. Two regions per inverse FFT
-
-*Not mandatory. Expected gain: inverse transforms roughly halved, which is most
-of the splitter's remaining cost when many regions are enabled.*
-
-Each region's masked spectrum is the spectrum of a real signal, so two of them
-(A and B) can share one complex inverse FFT: transform `A + jB`, and the real
-part of the result is region A's frame, the imaginary part region B's.
-
-Prerequisite: a fast complex inverse. `fxme::Fft` (complex) is still the scalar
-implementation. It would need the same treatment `RealFft` got (a
-`WDL_fft` backend for sizes up to 32768, with the permutation undone), or the
-splitter could call a new packed-pair entry point on `RealFft` instead.
-
-### 2. Only touch the bins inside each region
-
-*Not mandatory. Expected gain: moderate, grows with the number of narrow
-regions.*
-
-In `renderFrame()`, every enabled region copies the whole spectrum into `frame`
-and then runs the mask and gate over all `fftSize / 2 + 1` bins, although only
-bins `kLo..kHi` can be non-zero. Instead: zero `frame`, then fill only
-`kLo..kHi` with the masked, gated bins.
-
-Care point: bins outside the band currently get their `gateGain` reset to 0 on
-every hop. If the loop skips them, a region whose edges move would reopen with
-stale gate states on the newly covered bins. Reset the gains of the bins that
-enter the band when `setBand()` changes `lowHz` / `highHz` (or keep
-the reset loop, which is cheap compared with the mask).
-
-### 3. Skip the inverse FFT when a region's frame is silent
-
-*Not mandatory. Expected gain: large in the specific case of gated or empty
-regions, nothing otherwise.*
-
-When every gain in `kLo..kHi` is 0 (gate fully closed, or the band is narrower
-than one bin), the inverse transform and the overlap-add only add zeros. Track
-whether any bin gain was non-zero during the mask loop and skip both steps if
-none was.
-
-### 4. Remove the modulo from the history copy
-
-*Not mandatory. Expected gain: small.*
-
-`renderFrame()` reads the history ring with `(histPos + i) % fftSize` for every
-sample of the window. Replace it with two straight loops (from `histPos` to
-the end, then from 0), or keep a mirrored double-length history so the window
-is one contiguous read.
 
 ### 5. Spread the frame work across the hop
 
