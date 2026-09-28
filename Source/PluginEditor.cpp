@@ -12,6 +12,7 @@
 
 #include "PluginEditor.h"
 #include "RegionPanel.h"
+#include "OptionsPanel.h"
 
 using namespace dede;
 
@@ -54,10 +55,10 @@ namespace
         "  the view measures exactly as the gates do (same window size, peak\n"
         "    detector, no averaging), so a trace over a gate line passes it\n\n"
         "The bottom row holds the levels of the dry signal, the summed delays "
-        "and the reverb return, the output trim, the gate knee, and the reverb "
-        "itself. The knee (shared by every region) softens the gate and the "
-        "ceiling: at 0 a bin is passed or cut outright, wider it fades in and "
-        "out across that many dB around each line.";
+        "and the reverb return, the output trim, and the reverb itself.\n\n"
+        "The gear button opens the options: the FFT size (resolution against "
+        "latency) and the gate's attack, release and knee, shared by every "
+        "region. Its own help button explains each.";
 }
 
 //==============================================================================
@@ -75,10 +76,13 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     presetBrowserButton.setColour (juce::TextButton::textColourOffId, theme::accent);
     presetBrowserButton.onClick = [this] { showPresetBrowser(); };
 
+    optionsButton.setTooltip ("Options: FFT size, gate timing and knee");
+    optionsButton.onClick = [this] { showOptions(); };
+
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Dede", helpBody);
     topBar.setRightControls ({ { &presetBar, 210 }, { &presetBrowserButton, 26 },
-                               { &infoButton, 22 } });
+                               { &optionsButton, 24 }, { &infoButton, 22 } });
 
     fxme::SpectrumDisplay::Colours specColours;
     specColours.plotBackground = theme::plotBack;
@@ -133,7 +137,6 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     setUpKnob (wetKnob,      theme::accent);
     setUpKnob (revLevelKnob, theme::specViolet);
     setUpKnob (outKnob,      theme::accent);
-    setUpKnob (kneeKnob,     theme::accent);
     setUpKnob (roomKnob,     theme::specViolet);
     setUpKnob (dampKnob,     theme::specViolet);
     setUpKnob (widthKnob,    theme::specViolet);
@@ -367,6 +370,15 @@ void DedeAudioProcessorEditor::showPresetBrowser()
                                             this);
 }
 
+void DedeAudioProcessorEditor::showOptions()
+{
+    juce::CallOutBox::launchAsynchronously (std::make_unique<OptionsPanel> (processor),
+                                            getLocalArea (&topBar,
+                                                          optionsButton.getBounds().toFloat())
+                                                .toNearestInt(),
+                                            this);
+}
+
 //==============================================================================
 void DedeAudioProcessorEditor::timerCallback()
 {
@@ -406,8 +418,8 @@ void DedeAudioProcessorEditor::resized()
     area.removeFromLeft (theme::margin);
     spectrum.setBounds (area);
 
-    // Four level knobs on the left, the three reverb knobs on the right, the
-    // gate knee just left of the reverb, and whatever is left over as a gap.
+    // Four level knobs on the left, the three reverb knobs on the right, and
+    // whatever is left over as a gap.
     fxme::FxmeSlider* const levels[] { &dryKnob, &wetKnob, &revLevelKnob, &outKnob };
     fxme::FxmeSlider* const reverb[] { &roomKnob, &dampKnob, &widthKnob };
 
@@ -420,8 +432,4 @@ void DedeAudioProcessorEditor::resized()
     auto rightArea = controls.removeFromRight (knobW * (int) std::size (reverb));
     for (auto* k : reverb)
         k->setBounds (rightArea.removeFromLeft (knobW).reduced (4));
-
-    // The gate section sits against the reverb group, leaving the gap on the
-    // levels' side.
-    kneeKnob.setBounds (controls.removeFromRight (knobW).reduced (4));
 }

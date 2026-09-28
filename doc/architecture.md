@@ -247,9 +247,13 @@ scheme is part of the saved state, so slots are never renumbered and suffixes
 never renamed.
 
 Global: `dryLevel`, `wetLevel` (the summed delays), `outLevel`, the shared
-reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`, and `gateKnee` (dB, the
-width of the transition around every gate and ceiling line; 0 is a hard
-switch).
+reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`. In the options window
+(the gear in the top bar, `OptionsPanel`): `fftSize` (choice, 1024 to 16384
+points, not automatable), `gateKnee` (dB, the width of the transition around
+every gate and ceiling line; 0 is a hard switch), `gateAtk` and `gateRel` (ms,
+the splitter's per-bin attack and release, applied once per hop). Presets
+recall them like any other parameter, the FFT size (and so the latency)
+included.
 
 Per region: `on` (slot in use), `act` (fed by its band, default on), `solo`
 (not automatable; saved in presets like the rest, so a preset recalls

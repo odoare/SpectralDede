@@ -4,6 +4,38 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 16 and 7. Options window, with the FFT size and the gate timing (2026-09-28)
+
+A gear button in the top bar, between the preset browser's "..." and the help
+button, opens `OptionsPanel` (new, `Source/OptionsPanel.{h,cpp}`) in a
+callout, like the preset browser. The gear is drawn as a path (`GearButton`,
+same file), in the accent colour.
+
+- **Engine:** the FFT size (item 6's `fftSize`, a combo box with a
+  `ComboBoxAttachment`), and a read-out of what the running size comes to:
+  latency in samples and ms, bin width in Hz, and the gate step (one hop).
+  It follows the size the processor actually runs, since a change is applied
+  asynchronously.
+- **Gate:** attack, release and knee, shared by every region. The knee moved
+  here from the bottom row, which now holds only the levels and the reverb.
+- **Help:** an info button in the panel's corner explains each setting (the
+  resolution against latency trade, the silence at a size change, the gate
+  step limiting how short an attack can be).
+
+**Item 7.** Two new global parameters, `gateAtk` ("Gate attack", 1 to 100 ms,
+logarithmic, default 5 ms) and `gateRel` ("Gate release", 10 to 1000 ms,
+default 80 ms), the splitter's own defaults, so nothing changes by default.
+`processBlock` passes them to `splitter.setGateTimes()` every block, next to
+the knee (two exponentials). They are automatable, like the knee: they shape
+the sound and re-allocate nothing. Only `fftSize` is not.
+
+**Presets** recall all of them, the FFT size (and so the latency) included: a
+preset recalls the sound as heard. No "load engine settings" switch. Factory
+presets re-saved with `gateAtk` 5 and `gateRel` 80 (267 parameters each).
+
+Left for later: the Smoothing section (now item 16b) and the engine mode
+(item 17), which both add their controls to this panel.
+
 ## 1, 2, 3, 4. Splitter CPU (2026-09-28)
 
 Changes in `fxme::SpectralBandSplitter` (FxmeTools), same API, same output to

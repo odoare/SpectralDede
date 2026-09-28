@@ -169,6 +169,8 @@ private:
     std::atomic<float>* pRevWidth = nullptr;
     std::atomic<float>* pRevLevel = nullptr;
     std::atomic<float>* pGateKnee = nullptr;
+    std::atomic<float>* pGateAttack  = nullptr;
+    std::atomic<float>* pGateRelease = nullptr;
     std::atomic<float>* pFftSize  = nullptr;
 
     /** Mono-sums the input into monoBuffer: what the spectrum view shows and

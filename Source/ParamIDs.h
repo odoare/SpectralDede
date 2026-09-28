@@ -57,6 +57,8 @@ namespace ids
     inline constexpr const char* revLevel   = "revLevel";     // dB, reverb return
 
     inline constexpr const char* gateKnee   = "gateKnee";     // dB, gate/ceiling transition
+    inline constexpr const char* gateAttack = "gateAtk";      // ms, a bin opening
+    inline constexpr const char* gateRelease = "gateRel";     // ms, a bin closing
     inline constexpr const char* fftSize    = "fftSize";      // choice, see fftSizeNames
 
     // Per-region suffixes (see the file header for the naming scheme).
@@ -121,6 +123,16 @@ inline constexpr float gateCeilDb  = 0.0f;
 /** Width of the transition around the gate and the ceiling lines. 0 switches
     each bin outright; wider, a bin fades in and out across that many dB. */
 inline constexpr float maxGateKneeDb = 24.0f;
+
+/** How fast a bin's gate opens and closes, in ms. Applied once per hop, so
+    the resolution is one hop (about 11 ms at 2048 points): an attack under
+    that is effectively instant. The defaults are the splitter's own. */
+inline constexpr float minGateAttackMs      = 1.0f;
+inline constexpr float maxGateAttackMs      = 100.0f;
+inline constexpr float defaultGateAttackMs  = 5.0f;
+inline constexpr float minGateReleaseMs     = 10.0f;
+inline constexpr float maxGateReleaseMs     = 1000.0f;
+inline constexpr float defaultGateReleaseMs = 80.0f;
 
 inline constexpr float minGainDb = -60.0f;
 inline constexpr float maxGainDb = 12.0f;

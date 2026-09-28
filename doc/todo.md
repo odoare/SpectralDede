@@ -7,15 +7,14 @@ The CPU item touches `fxme::SpectralBandSplitter`, which is in the FxmeTools
 submodule (`lib/FxmeTools/core/FxmeTools/dsp/SpectralBandSplitter.h`), so it
 is an edit to the shared library: keep its API unchanged, add a core test, and
 note anything a consumer can observe in `lib/FxmeTools/doc/api-changes.md`.
-Of the feature items (second half of this file), 7 and 16 live in Dede's
+Of the feature items (second half of this file), 16b lives in Dede's
 `Source/` only. The others also change FxmeTools (the splitter,
 `fxme::StereoCrossDelay`, `fxme::SpectrumRegionEditor`, or a new core class),
 with the same rules as above.
 
-Items 7, 16 and 17 belong together with item 6 (done): 16 is an options
-window, and the settings of 6 (FFT size, whose control is still to be placed),
-7 (gate timing) and 17 (the live engine) are its contents. Build 16 first,
-with the FFT size in it, then add the others.
+The options window (item 16, done, with the FFT size of item 6 and the gate
+timing of item 7) is where 16b (smoothing times) and 17 (the engine mode) add
+their controls.
 
 **Parameters and saved state.** Items 6, 7, 9, 12, 13, 14 and 15 add
 parameters. Dede has not been released, so there is no state migration to
@@ -59,39 +58,12 @@ window size (the `fftSize` parameter, item 6, done), the same window and dB
 scale, the peak detector and no temporal averaging, all locked (see
 `architecture.md`, "The view measures exactly as the gates do"). The gate
 itself compares raw per-bin magnitudes every hop (about 11 ms) and smooths
-only the gain it applies, with fixed times: item 7 exposes them.
-
-### 7. Gate attack and release as parameters
-
-*Not mandatory. Planned.*
-
-The splitter already has `setGateTimes (attackSeconds, releaseSeconds)`
-(defaults 5 ms and 80 ms): the per-bin gate gain moves towards open or closed
-with these time constants, one step per hop. It is realtime-safe (it only
-recomputes two coefficients), so this needs no FxmeTools change.
-
-1. **Parameters.** Two global `AudioParameterFloat`s, `ids::gateAttack`
-   ("Gate attack", about 1 to 100 ms, skewed, default 5 ms) and
-   `ids::gateRelease` ("Gate release", about 10 to 1000 ms, skewed, default
-   80 ms). Global rather than per region, to keep the region popup small; per
-   region is possible later but would need per-band times in the splitter.
-2. **DSP.** In `processBlock`, next to `updateBands()`, call
-   `splitter.setGateTimes()` with the two values, converted to seconds. Cheap
-   enough to do every block; or only when either value changed.
-3. **Editor.** Two knobs (`fxme::FxmeSlider`, see the `fxme-juce-controls`
-   skill) in the options window (item 16, Gate section). Show milliseconds.
-   The same two parameters drive the live engine's band gates (item 17), so
-   they apply in both modes.
-4. **Presets.** The defaults equal the current hard-coded times, so nothing
-   changes by default. Re-save the factory presets (see the note at the top).
-5. **Note.** The time constants are applied per hop, so their resolution is
-   one hop (about 11 ms at 2048 points, more at larger sizes). An attack below
-   one hop is effectively instant. Worth saying in the info text, and a reason
-   to keep the attack range's low end at a few ms.
+only the gain it applies, with the attack and release of item 7 (done).
 
 ### 8. Gate detector smoothing, matched to the view (later)
 
-*Not mandatory. Only if the gate still warbles on noisy material after item 7.*
+*Not mandatory. Only if the gate still warbles on noisy material with a
+longer release (item 7, done).*
 
 Smooth each bin's level before the threshold comparison (an exponential
 average of `magSq` across hops, time constant as a parameter), so the gate
@@ -130,61 +102,33 @@ use a longer window (80 to 100 ms) for octaves, and judge by ear.
 4. `fxme::PitchShifter` smooths its ratio internally, so the interval can be
    moved without zipper noise.
 
-### 16. Options window
+### 16b. Smoothing times in the options window
 
-*Not mandatory. Planned; the home of items 6, 7 and 17.*
+*Not mandatory. What item 16 (done) left out.*
 
-A popup for the settings that shape how Dede works rather than what a region
-does: the engine (spectral or live), the FFT size, the gate timing, and the
-smoothing times. Opened from a **gear** button in the top bar, next to the
-preset browser's "..." button, the same way: a `juce::CallOutBox` anchored on
-the button, holding an `OptionsPanel` component (new `Source/OptionsPanel.{h,cpp}`).
+The glide times that are hard-coded today, one parameter each in a
+"Smoothing" section of `OptionsPanel`, with today's values as defaults so
+nothing changes:
 
-1. **Button.** A gear icon: draw it as a `juce::Path` (a toothed ring and a
-   hole) in a small `juce::DrawableButton` or a custom button, coloured like the
-   other top-bar chrome (`theme::accent`). Add it to
-   `topBar.setRightControls (...)` between the "..." button and the info
-   button. Tooltip "Options".
-2. **Panel.** Sections, each a heading and a few controls, laid out like the
-   region popup (`fxme::FxmeSlider` knobs, combo boxes with the look-and-feel,
-   `theme::styleCombo`):
-   - **Engine:** mode (Spectral / Live, item 17), FFT size (item 6, done: the
-     `fftSize` parameter exists and is applied live; add a combo box bound to
-     it with a `ComboBoxAttachment`, greyed in Live). A read-out line under
-     them: the resulting latency in ms and samples, and a one-line reminder of
-     what each mode gives up.
-   - **Gate:** attack and release (item 7), and the knee. The knee is on the
-     bottom row today; move it here too so all gate timing sits together, or
-     keep it on the bottom row as a sound-shaping control and only mirror it
-     here (decide; both are one attachment).
-   - **Smoothing:** the glide times that are hard-coded today, one parameter
-     each, with today's values as defaults so nothing changes:
-     - region gain and pan glide, 20 ms (`SpectralBandSplitter::setLevelSmoothingSeconds`,
-       and the pan smoothers in the processor);
-     - region output levels (Dry, Delay, Send) glide, 20 ms (the processor's
-       smoothers);
-     - border glide, 20 ms (`fxme::EdgeBandPass`'s smoothing: keep in band, and
-       the live engine's band filters);
-     - solo and free fade, 5 ms (`audibleGain`);
-     - delay-time glide, if `fxme::StereoCrossDelay`'s smoothed time exposes
-       its time constant (check `DelayLine`; an FxmeTools change otherwise).
-     Keep the list short: a smoothing nobody will ever want to change does not
-     earn a control.
-3. **Parameters.** All global, non-automatable (they re-allocate, change
-   latency, or are setup rather than performance). Saved with the session.
-   Presets: decide. Recalling the engine and FFT size with a preset follows
-   the rule that a preset recalls the sound as heard, but it also changes the
-   latency on preset load, which some hosts handle badly. A middle way is to
-   save them in presets but add a "load engine settings with presets" switch in
-   this same window, on by default.
-4. **Info text.** A short explanation per section, reachable from the panel
-   (an `fxme::InfoButton` in its corner), since these settings are the least
-   self-explanatory ones.
+- region gain and pan glide, 20 ms (`SpectralBandSplitter::setLevelSmoothingSeconds`,
+  and the pan smoothers in the processor);
+- region output levels (Dry, Delay, Send) glide, 20 ms (the processor's
+  smoothers);
+- border glide, 20 ms (`fxme::EdgeBandPass`'s smoothing: keep in band, and
+  the live engine's band filters);
+- solo and free fade, 5 ms (`audibleGain`);
+- delay-time glide, if `fxme::StereoCrossDelay`'s smoothed time exposes its
+  time constant (check `DelayLine`; an FxmeTools change otherwise).
+
+Keep the list short: a smoothing nobody will ever want to change does not
+earn a control. Re-save the factory presets.
 
 ### 17. Live engine (filter bank, zero latency)
 
 *Not mandatory. Planned. A second engine beside the spectral one, chosen in
-the options window (item 16); the spectral engine stays the default.*
+the options window (item 16, done: add a mode combo to its Engine section,
+grey the FFT size in Live, and add a line to the read-out saying what the
+mode gives up); the spectral engine stays the default.*
 
 The spectral engine (the STFT splitter) costs one FFT window of latency, 43 ms
 at 2048 points. The live engine cuts the regions with filters instead:

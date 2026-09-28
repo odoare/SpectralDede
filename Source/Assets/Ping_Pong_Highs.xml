@@ -10,6 +10,8 @@
   <PARAM id="revLevel" value="-12"/>
   <PARAM id="fftSize" value="1"/>
   <PARAM id="gateKnee" value="0"/>
+  <PARAM id="gateAtk" value="5"/>
+  <PARAM id="gateRel" value="80"/>
   <PARAM id="rg0_on" value="1"/>
   <PARAM id="rg0_act" value="1"/>
   <PARAM id="rg0_solo" value="0"/>

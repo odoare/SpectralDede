@@ -107,6 +107,18 @@ DedeAudioProcessor::createParameterLayout()
             [] (float x, int) { return x <= 0.0f ? String ("hard")
                                                  : String (x, 1) + " dB"; })));
 
+    const auto msToText = [] (float x, int) { return String (x, x < 10.0f ? 1 : 0) + " ms"; };
+
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ids::gateAttack, 1 }, "Gate attack",
+        logRange (minGateAttackMs, maxGateAttackMs, 0.1f), defaultGateAttackMs,
+        AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
+
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ids::gateRelease, 1 }, "Gate release",
+        logRange (minGateReleaseMs, maxGateReleaseMs, 0.1f), defaultGateReleaseMs,
+        AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
+
     // ---- Region slots ------------------------------------------------------
     const StringArray modeNames { "Seconds", "DAW sync", "MIDI note" };
 
@@ -378,6 +390,8 @@ void DedeAudioProcessor::cacheParameterPointers()
     pRevWidth = raw (ids::revWidth);
     pRevLevel = raw (ids::revLevel);
     pGateKnee = raw (ids::gateKnee);
+    pGateAttack  = raw (ids::gateAttack);
+    pGateRelease = raw (ids::gateRelease);
     pFftSize  = raw (ids::fftSize);
 
     for (int i = 0; i < maxRegions; ++i)
@@ -992,6 +1006,8 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Before updateBands(): a knee change recomputes every band's thresholds,
     // and setBand() then works from the new knee.
     splitter.setGateKnee (pGateKnee->load());
+    // Two exponentials: cheap enough to recompute every block.
+    splitter.setGateTimes (pGateAttack->load() * 0.001f, pGateRelease->load() * 0.001f);
     updateBands();
 
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
