@@ -22,7 +22,8 @@ namespace
         "one its own stereo delay, plus a send to a shared reverb.\n\n"
         "Drawing regions:\n"
         "  drag on empty space to draw a new one\n"
-        "  drag a border to move it, drag inside to move the whole band\n"
+        "  drag a border to move it, drag inside to move the whole band; a border\n"
+        "    sticks to another region's for a few pixels, so the two meet exactly\n"
         "  drag the dashed line to set the gate: what rises above it passes\n"
         "  drag the dotted line to set the ceiling: what rises above it is cut\n"
         "    (at the top it is off; the two lines push each other apart)\n"
@@ -102,6 +103,10 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     spectrum.setGateRange (gateFloorDb, gateCeilDb);
     spectrum.setCeilingRange (gateFloorDb, gateCeilDb);
     spectrum.setCeilingEnabled (true);
+
+    // A dragged border sticks to a neighbour's for a few pixels, so regions
+    // can be made to meet exactly.
+    spectrum.setEdgeSnapPixels (8.0f);
     wireRegionEditor();
     refreshRegionsFromParameters (true);
     addAndMakeVisible (spectrum);

@@ -4,6 +4,24 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Borders stick to other regions' borders (2026-09-28)
+
+Not a todo item. While a region's border is dragged, it sticks to another
+region's border once the pointer comes within 8 px of it: it lands on exactly
+the same frequency, so the two regions meet with no gap and no overlap, and it
+stays there until the pointer moves more than 8 px past. A thin full-height
+line marks the wall while it holds.
+
+- In FxmeTools, `SpectrumRegionEditor::setEdgeSnapPixels (px)`, off by default
+  so other plugins using the component are unaffected; Dede turns it on at
+  8 px. Recorded in `api-changes.md`.
+- Targets are both borders of every other active region; the nearest within
+  reach wins. The minimum region width still applies after snapping (it moves
+  the border not being dragged, so the snapped one stays on the wall).
+- Only border drags snap; moving a whole region does not. It could be added
+  (snapping whichever of its two borders comes nearest a wall) if wanted.
+- Help text updated.
+
 ## 15. Region column (2026-09-28)
 
 A column left of the spectrum view, one row per slot in the slot's colour.
