@@ -111,6 +111,16 @@ DedeAudioProcessor::createParameterLayout()
         layout.add (std::make_unique<AudioParameterBool> (
             ParameterID { id (ids::rgOn), 1 }, slot + "On", false));
 
+        // Off stops the band feeding the region (its tails ring out); solo
+        // silences every region not soloed. Not to be confused with "on"
+        // above, which says whether the slot is in use at all.
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgActive), 1 }, slot + "Active", true));
+
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgSolo), 1 }, slot + "Solo", false,
+            AudioParameterBoolAttributes().withAutomatable (false)));
+
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgFLo), 1 }, slot + "Low",
             logRange (minFreqHz, maxFreqHz), defaultBandEdge (i),
@@ -302,6 +312,8 @@ void DedeAudioProcessor::cacheParameterPointers()
     {
         auto& r = regions[i];
         r.on    = raw (ids::region (i, ids::rgOn));
+        r.active = raw (ids::region (i, ids::rgActive));
+        r.solo  = raw (ids::region (i, ids::rgSolo));
         r.fLo   = raw (ids::region (i, ids::rgFLo));
         r.fHi   = raw (ids::region (i, ids::rgFHi));
         r.gate  = raw (ids::region (i, ids::rgGate));
@@ -363,6 +375,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     regionBuffer.setSize (2, samplesPerBlock, false, false, true);
     wetBuffer.setSize (2, samplesPerBlock, false, false, true);
     sendBuffer.setSize (2, samplesPerBlock, false, false, true);
+    meterBuffer.setSize (2, samplesPerBlock, false, false, true);
+    meterBuffer.clear();
     directBuffer.setSize (2, samplesPerBlock, false, false, true);
     directBuffer.clear();
     bandBuffer.setSize (1, samplesPerBlock, false, false, true);
@@ -410,6 +424,12 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         saturators[i].prepare (sampleRate);
         keepFilters[i].prepare (sampleRate);
         keepWasOn[i] = false;
+
+        audibleGain[i].reset (sampleRate, 0.005);
+        audibleGain[i].setCurrentAndTargetValue (isAudible (i, anySolo()) ? 1.0f : 0.0f);
+        needsReset[i] = false;
+        for (auto& m : meters[i])
+            m.prepare (sampleRate);
         satDrive[i].reset (sampleRate, 0.02);
         downsamplers[i].reset();
         satWasOn[i] = dsWasOn[i] = false;
@@ -490,7 +510,9 @@ void DedeAudioProcessor::updateBands()
         const float ceilDb = r.ceil->load();
 
         fxme::SpectralBand band;
-        band.enabled = r.on->load() > 0.5f;
+        // A region switched off keeps its slot and its delay; only its band
+        // stops feeding it, so its tails ring out.
+        band.enabled = r.on->load() > 0.5f && r.active->load() > 0.5f;
         band.lowHz   = juce::jmin (a, b);
         band.highHz  = juce::jmax (a, b);
         band.gateDb  = gateDb <= gateFloorDb ? fxme::SpectralBandSplitter::openGateDb
@@ -543,6 +565,55 @@ void DedeAudioProcessor::panGains (int slot, float& left, float& right) const
                             * juce::MathConstants<float>::pi * 0.25f;
     left  = std::cos (theta);
     right = std::sin (theta);
+}
+
+bool DedeAudioProcessor::anySolo() const noexcept
+{
+    for (const auto& r : regions)
+        if (r.on->load() > 0.5f && r.solo->load() > 0.5f)
+            return true;
+    return false;
+}
+
+bool DedeAudioProcessor::isAudible (int slot, bool soloing) const noexcept
+{
+    const auto& r = regions[slot];
+    return r.on->load() > 0.5f
+        && (! soloing || r.solo->load() > 0.5f);
+}
+
+void DedeAudioProcessor::resetRegion (int slot)
+{
+    delays[slot].reset();
+    saturators[slot].reset();
+    downsamplers[slot].reset();
+    keepFilters[slot].reset();
+    satWasOn[slot] = dsWasOn[slot] = keepWasOn[slot] = false;
+    spectral.resetBand (slot);
+    for (auto& m : meters[slot])
+        m.clear();
+
+    // Levels and pan start where the new region's parameters are, rather than
+    // gliding from wherever the previous one left them.
+    float left = 0.0f, right = 0.0f;
+    panGains (slot, left, right);
+    panL[slot].setCurrentAndTargetValue (left);
+    panR[slot].setCurrentAndTargetValue (right);
+    delayGain[slot].setCurrentAndTargetValue (delayLevel (slot));
+    regionDryGain[slot].setCurrentAndTargetValue (regionDryLevel (slot));
+    sendGain[slot].setCurrentAndTargetValue (sendLevel (slot));
+}
+
+float DedeAudioProcessor::getRegionLevelDb (int slot, int channel) const noexcept
+{
+    if (! juce::isPositiveAndBelow (slot, maxRegions) || ! juce::isPositiveAndBelow (channel, 2))
+        return -100.0f;
+    return meters[slot][channel].getRMS();
+}
+
+float DedeAudioProcessor::getGateOpenness (int slot) const noexcept
+{
+    return splitter.getGateOpenness (slot);
 }
 
 void DedeAudioProcessor::applyKeepInBand (int slot, float* x, int numSamples)
@@ -694,10 +765,37 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     sendBuffer.clear (0, numSamples);
     directBuffer.clear (0, numSamples);
 
+    const bool soloing = anySolo();
+
     for (int i = 0; i < maxRegions; ++i)
     {
-        if (regions[i].on->load() <= 0.5f)
-            continue;
+        const bool inUse = regions[i].on->load() > 0.5f;
+
+        // Solo, and a slot being freed, both come down to the
+        // region's output gain, ramped so none of them clicks.
+        audibleGain[i].setTargetValue (isAudible (i, soloing) ? 1.0f : 0.0f);
+
+        if (! inUse)
+        {
+            // A freed slot plays out its fade, then stops; its state is
+            // cleared when it is used again, so a new region never starts by
+            // replaying the tail of the one before.
+            if (! audibleGain[i].isSmoothing())
+            {
+                if (! needsReset[i])
+                {
+                    needsReset[i] = true;
+                    for (auto& m : meters[i])
+                        m.clear();
+                }
+                continue;
+            }
+        }
+        else if (needsReset[i])
+        {
+            resetRegion (i);
+            needsReset[i] = false;
+        }
 
         updateDelay (i);
 
@@ -735,6 +833,8 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
         auto* wetL  = wetBuffer.getWritePointer (0);
         auto* wetR  = wetBuffer.getWritePointer (1);
+        auto* metL  = meterBuffer.getWritePointer (0);
+        auto* metR  = meterBuffer.getWritePointer (1);
         auto* dirL  = directBuffer.getWritePointer (0);
         auto* dirR  = directBuffer.getWritePointer (1);
         auto* sendL = sendBuffer.getWritePointer (0);
@@ -748,17 +848,27 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
             const float delay = delayGain[i].getNextValue();
             const float send  = sendGain[i].getNextValue();
 
+            const float audible = audibleGain[i].getNextValue();
+
             // pl/pr still hold the panned band: the delay wrote elsewhere.
             const float directL  = pl[s] * dry,     directR  = pr[s] * dry;
             const float delayedL = regL[s] * delay, delayedR = regR[s] * delay;
 
-            dirL[s]  += directL;
-            dirR[s]  += directR;
-            wetL[s]  += delayedL;
-            wetR[s]  += delayedR;
-            sendL[s] += (directL + delayedL) * send;
-            sendR[s] += (directR + delayedR) * send;
+            // The meter reads the region's output before the solo gain, so a
+            // region silenced by another's solo still shows what it would add.
+            metL[s] = directL + delayedL;
+            metR[s] = directR + delayedR;
+
+            dirL[s]  += directL * audible;
+            dirR[s]  += directR * audible;
+            wetL[s]  += delayedL * audible;
+            wetR[s]  += delayedR * audible;
+            sendL[s] += (directL + delayedL) * audible * send;
+            sendR[s] += (directR + delayedR) * audible * send;
         }
+
+        meters[i][0].process (metL, numSamples);
+        meters[i][1].process (metR, numSamples);
     }
 
     // The reverb runs every block whatever the sends are doing, so a tail keeps

@@ -73,6 +73,15 @@ public:
         MIDI-note mode multiplies its period by the region's delay value. */
     float getLastNoteHz() const noexcept                     { return lastNoteHz.load(); }
 
+    /** A region's output level in dBFS (RMS over 100 ms), channel 0 or 1,
+        measured before the solo gain. For the region column's meters; any
+        thread. */
+    float getRegionLevelDb (int slot, int channel) const noexcept;
+
+    /** How much of a region's energy its gate and ceiling let through, 0 to 1
+        (see fxme::SpectralBandSplitter::getGateOpenness). Any thread. */
+    float getGateOpenness (int slot) const noexcept;
+
 private:
     //==========================================================================
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -83,6 +92,8 @@ private:
     struct RegionParams
     {
         std::atomic<float>* on    = nullptr;
+        std::atomic<float>* active = nullptr;
+        std::atomic<float>* solo  = nullptr;
         std::atomic<float>* fLo   = nullptr;
         std::atomic<float>* fHi   = nullptr;
         std::atomic<float>* gate  = nullptr;
@@ -176,6 +187,18 @@ private:
         pitch, if on) when its "keep in band" switch is on; nothing when off. */
     void applyKeepInBand (int slot, float* x, int numSamples);
 
+    /** True when any region in use is soloed. */
+    bool anySolo() const noexcept;
+
+    /** Whether a region is heard: in use, and soloed if anything
+        is. Drives its output gain (ramped). */
+    bool isAudible (int slot, bool soloing) const noexcept;
+
+    /** Clears every piece of per-region state, for a slot being used again:
+        its delay lines, degrade and keep-in-band filters, spectral effects
+        and meters, and snaps its smoothed levels to the new parameters. */
+    void resetRegion (int slot);
+
     fxme::SpectrumTap inputTap;
     fxme::SpectralBandSplitter splitter;
 
@@ -196,6 +219,17 @@ private:
     /** "Keep in band": 24 dB/octave on each side, after the degrade chain. */
     fxme::EdgeBandPass keepFilters[dede::maxRegions];
     bool keepWasOn[dede::maxRegions] {};
+
+    /** Solo and a freed slot's fade-out: the region's output gain. */
+    juce::SmoothedValue<float> audibleGain[dede::maxRegions];
+
+    /** Set once a freed slot has faded out: its state is cleared when the
+        slot is used again. */
+    bool needsReset[dede::maxRegions] {};
+
+    /** Each region's output level (L, R), before the solo gain, for the
+        region column. */
+    fxme::VuMeter meters[dede::maxRegions][2];
     fxme::Reverb reverb;
 
     /** The dry path is delayed by the splitter's latency so it stays lined up
@@ -208,6 +242,7 @@ private:
     juce::AudioBuffer<float> wetBuffer;     // stereo, the summed regions
     juce::AudioBuffer<float> sendBuffer;    // stereo, what the regions send to the reverb
     juce::AudioBuffer<float> directBuffer;  // stereo, the regions' own dry bands, summed
+    juce::AudioBuffer<float> meterBuffer;   // stereo, one region's output before the solo gain, for its meter
     juce::AudioBuffer<float> bandBuffer;    // 1 channel, one region's band through its degrade chain
     juce::AudioBuffer<float> panBuffer;     // stereo, that band panned, into its delay
 

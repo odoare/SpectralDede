@@ -70,6 +70,31 @@ some level at its centre (about 2 dB for half an octave).
 The reverb runs on every block whatever the sends are doing, so a tail keeps
 ringing after the region that fed it has been turned down or deleted.
 
+Three switches per region, in the region column left of the spectrum, act at
+different points and are worth keeping apart:
+
+- **On** (`act`) is at the input: off, the splitter band is disabled (which
+  also saves its inverse FFT), so nothing new enters the region, but its delay
+  runs on and its tails ring out. The region stays in place and editable.
+- **Solo** (`solo`) is at the output: when any region is soloed, the others
+  are silenced by a ramped gain (5 ms) on their Dry and Delay, and so on their
+  reverb sends, which are taken from them. Their processing goes on, so
+  releasing the solo comes back into running tails. The global dry is not
+  affected. (There was a per-region Mute on the same gain; it was removed as
+  redundant with On. The difference: On lets the tails ring out, a mute cut
+  them at once.)
+- **Free** (the `on` parameter, "slot in use") deletes the region. Its output
+  fades through the same ramp, then the slot stops being processed. When the
+  slot is used again, every piece of its state (delay lines, degrade and
+  keep-in-band filters, spectral effects, meters, smoothed levels) is cleared
+  first, so a new region never starts by replaying its predecessor's tail.
+
+A region that is off, or silenced by another's solo, is drawn dimmed on the
+spectrum. Each row also shows two meters: how much of the region's energy its
+gate lets through (`SpectralBandSplitter::getGateOpenness`), and the region's
+output level, left and right, measured before the solo gain (one
+`fxme::VuMeter` per channel per region, 100 ms RMS).
+
 The global dry signal is never processed: it is the untouched input,
 level-trimmed. Everything the regions do is added on top, so with no region
 enabled Dede is a gain stage.
@@ -201,7 +226,10 @@ reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`, and `gateKnee` (dB, the
 width of the transition around every gate and ceiling line; 0 is a hard
 switch).
 
-Per region: `on`, `flo`, `fhi` (band borders, logarithmic 20 Hz to 20 kHz),
+Per region: `on` (slot in use), `act` (fed by its band, default on), `solo`
+(not automatable; saved in presets like the rest, so a preset recalls
+the sound as it was heard), `flo`, `fhi` (band borders, logarithmic 20 Hz to
+20 kHz),
 `gate` (dB, at its minimum the region is fully open), `ceil` (dB, same range
 as the gate, at its maximum it is off), `gain` (dB), `pan`,
 `timel`, `timer` (0.001 to 3, meaning set by the mode), `mode` (seconds, DAW

@@ -60,6 +60,8 @@ namespace ids
 
     // Per-region suffixes (see the file header for the naming scheme).
     inline constexpr const char* rgOn    = "on";      // region slot in use
+    inline constexpr const char* rgActive = "act";    // bool, the band feeds the region (off: tails ring out)
+    inline constexpr const char* rgSolo  = "solo";    // bool, non-automatable
     inline constexpr const char* rgFLo   = "flo";     // Hz, left border
     inline constexpr const char* rgFHi   = "fhi";     // Hz, right border
     inline constexpr const char* rgGate  = "gate";    // dB, spectral gate floor

@@ -4,6 +4,74 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 15. Region column (2026-09-28)
+
+A column left of the spectrum view, one row per slot in the slot's colour.
+A free slot shows only its number; a slot in use shows, left to right:
+
+| Control | Parameter | What it does |
+|---|---|---|
+| x (Free) | `on` (slot in use) | Deletes the region and releases the slot, which can be drawn again. Momentary. Same as Delete on the view. |
+| On | `act` (new, default on) | At the input: off, the band stops feeding the region (the splitter band is disabled, saving its inverse FFT); the delay runs on and its tails ring out. |
+| S | `solo` (new, not automatable) | At the output: silences every region not soloed; several can be on. The global dry is kept. |
+| K | `keep` (item 14) | Keep in band; the same parameter as on the Degrade tab. |
+| gate bar | — | How much of the region's energy its gate and ceiling let through. |
+| L / R bars | — | The region's output level (100 ms RMS), before the solo gain. |
+
+**Mute, removed.** The column first had an M (mute) button next to S: an
+output-side switch silencing the region at once while its processing went on.
+It was removed the same day as redundant with On. What was lost: On acts at the
+input, so a region switched off lets its delay tails ring out, whereas a mute
+cut them at once; soloing another region still silences one instantly.
+
+The one-letter buttons are `fxme::AccentToggle`s (latching, custom-painted,
+made for mute/solo letters) bound with plain `ButtonAttachment`s; all have
+tooltips, and the editor gained a `juce::TooltipWindow` for them (there was
+none: the preset button's tooltip never showed before either).
+
+**Selection** is shared both ways: clicking a row selects its region on the
+view (and gives the view keyboard focus, so Delete acts at once), and
+selecting a region on the view highlights its row.
+
+**Dimming.** A region that is off, or silenced by another's solo, is
+drawn dimmed on the spectrum (desaturated and darker: the view sets its own
+alphas, so the colour itself changes; no FxmeTools change needed). Its row's
+chip and meters dim too.
+
+**DSP.**
+
+- Solo and a freed slot's fade-out are one ramped gain per region (5 ms) on
+  the region's Dry and Delay, and so on its send.
+- **Stale-slot fix.** A freed slot used to stop mid-tail (a click) and keep
+  its delay content, so the next region drawn in it started by replaying the
+  old tail. Now a freed slot fades out, then stops being processed; when it
+  is used again, `resetRegion()` clears its delay lines, saturator,
+  downsampler, keep-in-band filter, spectral effects (`resetBand`, new in
+  FxmeTools) and meters, and snaps its smoothed levels and pan to the new
+  region's parameters.
+
+**Decisions** (the plan left two open, both settled as it suggested):
+
+- Solo does not mute the global dry.
+- The meter reads before the output gain, as a DAW shows a muted track: a
+  region silenced by another's solo still shows what it would add. It
+  measures the region's whole output (Dry plus Delay), which by now is what
+  "the region's output" means.
+- The gate meter is energy-weighted, not the plain average of per-bin gains
+  the plan described: a loud tone passing in a wide region would read near 0
+  on an average, since only three bins are open.
+- A solo-silenced region is dimmed too, not only one that is off.
+
+**FxmeTools.** `SpectralBandSplitter::getGateOpenness` (4 new checks in
+`CoreSplitterTests.cpp`), `SpectralBandEffects::resetBand`, and a shadowing
+local removed in `RealFft`; recorded in `api-changes.md`.
+
+**Also.** Layout: the column is 180 px wide, taken from the left of the
+spectrum's area; default editor width 980 -> 1170 px, minimum 760 -> 950 px.
+Factory presets carry `act` on and `solo` off (264 parameters each).
+`architecture.md` (the three switches kept apart, the stale-slot fix,
+parameter list) and the help text are updated.
+
 ## 14. Keep in band (2026-09-28)
 
 A per-region switch, **Keep in band** (`keep`, off by default), that

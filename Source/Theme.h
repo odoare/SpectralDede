@@ -107,7 +107,9 @@ namespace dede::theme
     inline constexpr int margin         = 10;
     inline constexpr int globalRowHeight = 96;
 
-    inline constexpr int defaultWidth  = 980;
+    inline constexpr int regionColumnWidth = 180;
+    inline constexpr int minEditorWidth    = 950;   // keeps the spectrum usable beside the column
+    inline constexpr int defaultWidth  = 1170;
     inline constexpr int defaultHeight = 620;
 
 } // namespace dede::theme

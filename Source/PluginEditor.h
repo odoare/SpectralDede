@@ -17,6 +17,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "Theme.h"
+#include "RegionColumn.h"
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -49,6 +50,13 @@ private:
     fxme::SpectrumRegionEditor::Region regionFromParameters (int slot) const;
 
     void setParameter (const juce::String& id, float value);
+
+    /** Deletes the region in `slot` and releases the slot (from the view's
+        Delete key or the column's Free button). */
+    void freeSlot (int slot);
+
+    /** True when any region in use is soloed. */
+    bool anySoloed() const;
     void beginGesture (int slot, fxme::SpectrumRegionEditor::Handle handle, bool begin);
 
     /** First slot whose "on" parameter is false, or -1 when all are in use. */
@@ -71,6 +79,10 @@ private:
     fxme::SpectrumRegionEditor spectrum;
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
 
+    /** One row per region slot, left of the spectrum: free, on, solo,
+        keep in band, and the gate and level meters. */
+    RegionColumn column { processor };
+
     /** The region popup's tab last shown, so the next one opens on it. Per
         editor session, not saved. The popup is a child of this editor, so the
         reference it keeps never outlives this. */
@@ -90,6 +102,10 @@ private:
     fxme::PresetBarComponent presetBar { processor.getPresetManager() };
     juce::TextButton presetBrowserButton { "..." };
     fxme::InfoButton infoButton;
+
+    // The column's one-letter buttons rely on their tooltips. Declared after
+    // the other children; it keeps itself on top anyway.
+    juce::TooltipWindow tooltipWindow { this, 700 };
 
     // Exactly one per editor, declared after the child components.
     fxme::TextEntryFocusFixer textEntryFixer { *this };

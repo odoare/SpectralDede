@@ -35,6 +35,14 @@ namespace
         "    on top of the global dry; its reverb send takes Dry and Delay after\n"
         "    their levels\n"
         "  Delete or Backspace removes the selected region\n\n"
+        "Region column (one row per slot; click a row to select its region):\n"
+        "  x frees the slot: the region is deleted, the slot can be drawn again\n"
+        "  On off stops the band feeding the region: its tails ring out\n"
+        "  S solos: every region not soloed is silenced (the dry signal is kept)\n"
+        "  K keeps in band: filters what the degrade chain spills outside the\n"
+        "    region back into its range\n"
+        "  the bars: how much of the region's energy its gate lets through, then\n"
+        "    its output level (left, right), shown even when silenced by a solo\n\n"
         "Delay times read three ways, chosen per region: seconds, a proportion "
         "of a whole note at the host tempo (0.25 is a quarter note), or a "
         "multiple of the period of the last MIDI note received. The panel shows "
@@ -97,6 +105,7 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     wireRegionEditor();
     refreshRegionsFromParameters (true);
     addAndMakeVisible (spectrum);
+    addAndMakeVisible (column);
 
     setUpKnob (dryKnob,      theme::accent);
     setUpKnob (wetKnob,      theme::accent);
@@ -111,7 +120,7 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     startTimerHz (20);
 
     setResizable (true, true);
-    setResizeLimits (760, 480, 2400, 1600);
+    setResizeLimits (theme::minEditorWidth, 480, 2400, 1600);
     setSize (theme::defaultWidth, theme::defaultHeight);
 }
 
@@ -167,7 +176,14 @@ DedeAudioProcessorEditor::regionFromParameters (int slot) const
     r.ceilingDb = value (ids::rgCeil);
     r.gainDb = value (ids::rgGain);
     r.pan    = value (ids::rgPan);
-    r.colour = theme::regionColour (slot);
+    // A region that is off, or silenced by another's solo, is drawn
+    // dimmed: desaturated and darker (the view sets its own alphas, so the
+    // colour itself has to change).
+    const bool heard = ! anySoloed() || value (ids::rgSolo) > 0.5f;
+    const bool fed   = value (ids::rgActive) > 0.5f;
+    r.colour = heard && fed ? theme::regionColour (slot)
+                            : theme::regionColour (slot).withMultipliedSaturation (0.35f)
+                                                         .withMultipliedBrightness (0.55f);
     r.label  = juce::String (slot + 1);
     return r;
 }
@@ -188,7 +204,8 @@ void DedeAudioProcessorEditor::refreshRegionsFromParameters (bool force)
             || ! same (r.gateDb, shown.gateDb)
             || ! same (r.ceilingDb, shown.ceilingDb)
             || ! same (r.gainDb, shown.gainDb)
-            || ! same (r.pan,    shown.pan);
+            || ! same (r.pan,    shown.pan)
+            || r.colour != shown.colour;
 
         if (! changed)
             continue;
@@ -262,16 +279,43 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         return slot;
     };
 
-    spectrum.onRegionDelete = [this] (int slot)
+    spectrum.onRegionDelete = [this] (int slot) { freeSlot (slot); };
+
+    // The column and the view share the selection both ways.
+    spectrum.onSelectionChanged = [this] (int slot) { column.setSelectedRow (slot); };
+    column.onRowClicked = [this] (int slot)
     {
-        setParameter (ids::region (slot, ids::rgOn), 0.0f);
-        refreshRegionsFromParameters (true);
+        spectrum.setSelectedRegion (slot);
+        spectrum.grabKeyboardFocus();          // so Delete acts on it at once
     };
+    column.onFreeClicked = [this] (int slot) { freeSlot (slot); };
 
     spectrum.onRegionClicked = [this] (int slot) { showRegionPanel (slot); };
 
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
+}
+
+void DedeAudioProcessorEditor::freeSlot (int slot)
+{
+    if (spectrum.getSelectedRegion() == slot)
+        spectrum.setSelectedRegion (-1);
+
+    setParameter (ids::region (slot, ids::rgOn), 0.0f);
+    refreshRegionsFromParameters (true);
+}
+
+bool DedeAudioProcessorEditor::anySoloed() const
+{
+    auto& apvts = processor.getAPVTS();
+    for (int i = 0; i < maxRegions; ++i)
+    {
+        auto* on   = apvts.getRawParameterValue (ids::region (i, ids::rgOn));
+        auto* solo = apvts.getRawParameterValue (ids::region (i, ids::rgSolo));
+        if (on != nullptr && solo != nullptr && on->load() > 0.5f && solo->load() > 0.5f)
+            return true;
+    }
+    return false;
 }
 
 void DedeAudioProcessorEditor::showRegionPanel (int slot)
@@ -329,6 +373,9 @@ void DedeAudioProcessorEditor::resized()
 
     auto controls = area.removeFromBottom (theme::globalRowHeight);
     area.removeFromBottom (theme::margin);
+
+    column.setBounds (area.removeFromLeft (theme::regionColumnWidth));
+    area.removeFromLeft (theme::margin);
     spectrum.setBounds (area);
 
     // Four level knobs on the left, the three reverb knobs on the right, the
