@@ -87,8 +87,9 @@ public:
     bool isLiveEngine() const noexcept                       { return liveEngine.load(); }
 
     /** A region's band level in dB as its live gate compares it (see
-        fxme::BandGate), for the view's level markers; -200 in the spectral
-        engine, whose gates compare the trace itself. Any thread. */
+        fxme::BandDynamicsProcessor), for the view's level markers; -200 in
+        the spectral engine, whose gates compare the trace itself. Any
+        thread. */
     float getBandLevelDb (int slot) const noexcept;
 
     /** A region's highest band level since the previous call (live engine),
@@ -129,6 +130,16 @@ private:
         std::atomic<float>* fHi   = nullptr;
         std::atomic<float>* gate  = nullptr;
         std::atomic<float>* ceil  = nullptr;
+
+        std::atomic<float>* gateRatio   = nullptr;
+        std::atomic<float>* gateRange   = nullptr;
+        std::atomic<float>* gateKnee    = nullptr;
+        std::atomic<float>* gateAttack  = nullptr;
+        std::atomic<float>* gateRelease = nullptr;
+        std::atomic<float>* ceilRatio   = nullptr;
+        std::atomic<float>* ceilKnee    = nullptr;
+        std::atomic<float>* ceilAttack  = nullptr;
+        std::atomic<float>* ceilRelease = nullptr;
         std::atomic<float>* gain  = nullptr;
         std::atomic<float>* pan   = nullptr;
         std::atomic<float>* timeL = nullptr;
@@ -217,9 +228,6 @@ private:
     std::atomic<float>* pRevDamp  = nullptr;
     std::atomic<float>* pRevWidth = nullptr;
     std::atomic<float>* pRevLevel = nullptr;
-    std::atomic<float>* pGateKnee = nullptr;
-    std::atomic<float>* pGateAttack  = nullptr;
-    std::atomic<float>* pGateRelease = nullptr;
     std::atomic<float>* pFftSize  = nullptr;
     std::atomic<float>* pEngine   = nullptr;
     std::atomic<float>* pBandMode = nullptr;
@@ -229,6 +237,16 @@ private:
         what the band splitter is fed are then one and the same signal, which
         is what makes a gate line drawn on the trace mean anything. */
     void buildMonoInput (const juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
+
+    /** One region's dynamics (the Dynamics tab) as the splitters take them. */
+    fxme::BandDynamics regionDynamics (int slot) const;
+    static bool sameDynamics (const fxme::BandDynamics& a, const fxme::BandDynamics& b) noexcept;
+
+    /** What was last passed to the active splitter, per region, and whether
+        it has to be sent again (set by configureEngine(), which every prepare
+        goes through: a freshly prepared splitter has default dynamics). */
+    fxme::BandDynamics sentDynamics[dede::maxRegions];
+    bool dynamicsStale[dede::maxRegions] {};
 
     /** Copies the current region parameters into the splitter's bands. */
     void updateBands();

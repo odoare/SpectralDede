@@ -25,6 +25,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <limits>
 
 namespace dede
 {
@@ -56,9 +57,6 @@ namespace ids
     inline constexpr const char* revWidth   = "revWidth";     // 0..1
     inline constexpr const char* revLevel   = "revLevel";     // dB, reverb return
 
-    inline constexpr const char* gateKnee   = "gateKnee";     // dB, gate/ceiling transition
-    inline constexpr const char* gateAttack = "gateAtk";      // ms, a bin opening
-    inline constexpr const char* gateRelease = "gateRel";     // ms, a bin closing
     inline constexpr const char* fftSize    = "fftSize";      // choice, see fftSizeNames
     inline constexpr const char* engine     = "engine";       // choice, see engineNames
     inline constexpr const char* bandMode   = "bands";        // choice, see bandModeNames
@@ -72,6 +70,17 @@ namespace ids
     inline constexpr const char* rgFHi   = "fhi";     // Hz, right border
     inline constexpr const char* rgGate  = "gate";    // dB, spectral gate floor
     inline constexpr const char* rgCeil  = "ceil";    // dB, spectral ceiling
+
+    // Dynamics around the two lines (see fxme::BandDynamics), per region.
+    inline constexpr const char* rgGateRatio   = "gtrat";  // 1..21, 21 = infinite (a gate)
+    inline constexpr const char* rgGateRange   = "gtrng";  // dB, bottom = -inf
+    inline constexpr const char* rgGateKnee    = "gtkn";   // dB
+    inline constexpr const char* rgGateAttack  = "gtatk";  // ms
+    inline constexpr const char* rgGateRelease = "gtrel";  // ms
+    inline constexpr const char* rgCeilRatio   = "clrat";  // 1..22, 21 = infinite (a limiter), 22 = cut
+    inline constexpr const char* rgCeilKnee    = "clkn";   // dB
+    inline constexpr const char* rgCeilAttack  = "clatk";  // ms
+    inline constexpr const char* rgCeilRelease = "clrel";  // ms
     inline constexpr const char* rgGain  = "gain";    // dB
     inline constexpr const char* rgPan   = "pan";     // -1..1
     inline constexpr const char* rgTimeL = "timel";   // 0.001..3, see DelayMode
@@ -129,19 +138,37 @@ inline constexpr float maxFreqHz = 20000.0f;
 inline constexpr float gateFloorDb = -100.0f;
 inline constexpr float gateCeilDb  = 0.0f;
 
-/** Width of the transition around the gate and the ceiling lines. 0 switches
-    each bin outright; wider, a bin fades in and out across that many dB. */
-inline constexpr float maxGateKneeDb = 24.0f;
+/** A region's dynamics (the Dynamics tab), around its two lines.
 
-/** How fast a bin's gate opens and closes, in ms. Applied once per hop, so
-    the resolution is one hop (about 11 ms at 2048 points): an attack under
-    that is effectively instant. The defaults are the splitter's own. */
-inline constexpr float minGateAttackMs      = 1.0f;
-inline constexpr float maxGateAttackMs      = 100.0f;
-inline constexpr float defaultGateAttackMs  = 5.0f;
-inline constexpr float minGateReleaseMs     = 10.0f;
-inline constexpr float maxGateReleaseMs     = 1000.0f;
-inline constexpr float defaultGateReleaseMs = 80.0f;
+    Gate (the lower line): a downward expander, `gtrat` from 1 (none) to 20,
+    its top (21) meaning infinite, a hard gate; `gtrng` how far down it goes,
+    its bottom meaning -inf (silence).
+    Ceiling (the upper line): a compressor, `clrat` from 1 to 20, then 21 for
+    infinite (a limiter) and 22 for a cut (mute over the line, the original
+    ceiling, and the default).
+    Each line has its knee (0 to 24 dB), attack and release. The defaults (a
+    hard gate, a cut, no knee, 5 ms and 80 ms) are the original behaviour. */
+inline constexpr float maxRatio          = 20.0f;
+inline constexpr float infiniteRatio     = 21.0f;   // the top of gtrat, a notch of clrat
+inline constexpr float cutRatio          = 22.0f;   // the top of clrat
+inline constexpr float minGateRangeDb    = -80.0f;  // read as -inf
+inline constexpr float maxKneeDb         = 24.0f;
+inline constexpr float minAttackMs       = 0.1f;
+inline constexpr float maxAttackMs       = 100.0f;
+inline constexpr float defaultAttackMs   = 5.0f;
+inline constexpr float minReleaseMs      = 5.0f;
+inline constexpr float maxReleaseMs      = 2000.0f;
+inline constexpr float defaultReleaseMs  = 80.0f;
+
+/** A ratio parameter's value as a ratio: infinite from halfway to the
+    infinite notch on. */
+inline float ratioFromParameter (float v) noexcept
+{
+    return v >= infiniteRatio - 0.5f ? std::numeric_limits<float>::infinity() : juce::jmax (1.0f, v);
+}
+
+/** Whether a ceiling ratio parameter is at its cut position. */
+inline bool isCeilingCut (float v) noexcept { return v >= cutRatio - 0.5f; }
 
 inline constexpr float minGainDb = -60.0f;
 inline constexpr float maxGainDb = 12.0f;

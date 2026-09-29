@@ -3,8 +3,18 @@
     RegionPanel.h
 
     The settings of one region, shown in a callout when its rectangle is
-    clicked on the spectrum view, in tabs:
+    clicked on the spectrum view, in tabs in signal order:
 
+      - Dynamics: what happens around the region's two lines (dragged on the
+        view): under the gate a downward expander (ratio, range; a hard gate
+        by default), over the ceiling a compressor (ratio; a limiter at its
+        top) or a cut (the default), each with its knee, attack and release.
+        Per frequency bin in the Spectral engine (a spectral expander /
+        compressor), on the band's level in the Live engine (a multiband
+        one).
+      - Spectral: pitch shift (fractional semitones), freeze (tonal or wash)
+        and blur, each with its own switch, done inside the splitter's frame
+        before the band leaves it (so before the delay and degrade stages).
       - Delay: the two delay times and how they are read (seconds, host tempo,
         or the last MIDI note), the three feedback gains, and the region's
         output: its own band undelayed (Dry, off by default, added on top of
@@ -15,13 +25,10 @@
         the delay (on the mono band, so the region's Dry hears it too), in
         the delay loop (on what enters the lines: the first echo, then again
         on every repeat), or after the delay (on the repeats).
-      - Spectral: pitch shift (fractional semitones), freeze (tonal or wash)
-        and blur, each with its own switch, done inside the splitter's frame
-        before the band leaves it (so before the degrade chain).
 
-    Everything a region does to the spectrum itself (its borders, its gate and
-    ceiling, its gain and pan) is set by dragging on the view, so none of it
-    appears here. The panel is only what has no natural handle on a spectrum.
+    The region's borders, the levels of its gate and ceiling lines, and its
+    gain and pan are set by dragging on the view, so none of them appears
+    here. The panel is only what has no natural handle on a spectrum.
 
     The tab last shown is remembered by the editor (not saved), so reopening a
     region, or opening another, lands where the user was.
@@ -51,6 +58,7 @@ public:
     void resized() override;
 
 private:
+    class DynamicsPage;
     class DelayPage;
     class StagesPage;
     class Tabs;

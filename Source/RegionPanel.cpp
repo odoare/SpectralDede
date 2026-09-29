@@ -22,7 +22,7 @@ namespace
     constexpr int knobHeight   = 82;
     constexpr int footerHeight = 24;
     constexpr int knobWidth    = 74;
-    constexpr int numKnobs     = 8;     // the delay page's row sets the width
+    constexpr int numKnobs     = 9;     // the dynamics page's row sets the width
     constexpr int panelMargin  = 8;
 
     constexpr int positionRowHeight = 24;   // a degrade stage's position selector
@@ -110,7 +110,7 @@ public:
         fxme::FxmeSlider* const row[] { timeL.get(), timeR.get(), fbL.get(), fbR.get(),
                                         fbX.get(), dryLevel.get(), delayLevel.get(), send.get() };
 
-        const int w = knobs.getWidth() / numKnobs;
+        const int w = knobs.getWidth() / (int) std::size (row);
         for (auto* k : row)
             k->setBounds (knobs.removeFromLeft (w).reduced (3));
 
@@ -165,6 +165,121 @@ private:
     juce::ComboBox modeBox;
     std::unique_ptr<ComboBoxAttachment> modeAttachment;
     juce::String timeText;
+};
+
+//==============================================================================
+/** The region's dynamics around its two lines on the spectrum view: under
+    the gate (the lower, dashed line) a downward expander, over the ceiling
+    (the upper, dotted line) a compressor or a cut. The lines' levels are
+    dragged on the view; this page sets what happens around them. A group is
+    dimmed while its line is parked at the end of its range (off). */
+class RegionPanel::DynamicsPage : public juce::Component,
+                                  private juce::Timer
+{
+public:
+    DynamicsPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour)
+        : processor (p), slot (regionSlot), accent (accentColour)
+    {
+        const auto knob = [this] (const char* suffix, const char* label)
+        {
+            return makeKnob (*this, processor, slot, suffix, label, accent);
+        };
+
+        gate.push_back (knob (ids::rgGateRatio,   "Ratio"));
+        gate.push_back (knob (ids::rgGateRange,   "Range"));
+        gate.push_back (knob (ids::rgGateKnee,    "Knee"));
+        gate.push_back (knob (ids::rgGateAttack,  "Attack"));
+        gate.push_back (knob (ids::rgGateRelease, "Release"));
+
+        ceiling.push_back (knob (ids::rgCeilRatio,   "Ratio"));
+        ceiling.push_back (knob (ids::rgCeilKnee,    "Knee"));
+        ceiling.push_back (knob (ids::rgCeilAttack,  "Attack"));
+        ceiling.push_back (knob (ids::rgCeilRelease, "Release"));
+
+        updateIdle();
+        startTimerHz (10);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
+        const auto heading = [&g, this] (juce::Rectangle<int> area, const juce::String& text, bool on)
+        {
+            g.setColour (on ? accent : theme::dimText);
+            g.drawText (text, area.reduced (6, 0), juce::Justification::centredLeft);
+        };
+        heading (gateHeading, gateOn ? "Gate (lower line): expander"
+                                     : "Gate: off (its line is at the bottom)", gateOn);
+        heading (ceilingHeading, ceilingOn ? "Ceiling (upper line): " + ceilingMode()
+                                           : "Ceiling: off (its line is at the top)", ceilingOn);
+
+        g.setColour (theme::panelLine);
+        g.fillRect (juce::Rectangle<float> ((float) separatorX, (float) pagePadding + 4.0f,
+                                            1.0f, (float) getHeight() - pagePadding - 8.0f));
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        area.removeFromTop (pagePadding);
+
+        const int unit = area.getWidth() / (int) (gate.size() + ceiling.size());
+        auto gateArea = area.removeFromLeft (unit * (int) gate.size());
+        separatorX = area.getX();
+
+        constexpr int headingHeight = 22;
+        gateHeading    = gateArea.removeFromTop (headingHeight);
+        ceilingHeading = area.removeFromTop (headingHeight);
+
+        const auto row = [unit] (juce::Rectangle<int> r, std::vector<std::unique_ptr<fxme::FxmeSlider>>& knobs)
+        {
+            r = r.withHeight (knobHeight);
+            for (auto& k : knobs)
+                k->setBounds (r.removeFromLeft (unit).reduced (3));
+        };
+        row (gateArea, gate);
+        row (area, ceiling);
+    }
+
+private:
+    void timerCallback() override { updateIdle(); }
+
+    /** The ceiling's mode in words, from its ratio. */
+    juce::String ceilingMode() const
+    {
+        const float v = parameterValue (processor, slot, ids::rgCeilRatio);
+        return isCeilingCut (v) ? "cut" : v >= infiniteRatio - 0.5f ? "limiter" : "compressor";
+    }
+
+    /** A line parked at the end of its range is off: its group is dimmed. */
+    void updateIdle()
+    {
+        const bool gateNow    = parameterValue (processor, slot, ids::rgGate) > gateFloorDb;
+        const bool ceilingNow = parameterValue (processor, slot, ids::rgCeil) < gateCeilDb;
+        const juce::String mode = ceilingMode();
+
+        if (gateNow == gateOn && ceilingNow == ceilingOn && mode == shownMode)
+            return;
+
+        gateOn = gateNow;
+        ceilingOn = ceilingNow;
+        shownMode = mode;
+        for (auto& k : gate)
+            k->setAlpha (gateOn ? 1.0f : idleAlpha);
+        for (auto& k : ceiling)
+            k->setAlpha (ceilingOn ? 1.0f : idleAlpha);
+        repaint();
+    }
+
+    DedeAudioProcessor& processor;
+    const int slot;
+    const juce::Colour accent;
+
+    std::vector<std::unique_ptr<fxme::FxmeSlider>> gate, ceiling;
+    juce::Rectangle<int> gateHeading, ceilingHeading;
+    int separatorX = 0;
+    bool gateOn = true, ceilingOn = true;
+    juce::String shownMode;
 };
 
 //==============================================================================
@@ -391,7 +506,6 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     bar.setColour (juce::TabbedButtonBar::tabOutlineColourId,  juce::Colours::transparentBlack);
     bar.setColour (juce::TabbedButtonBar::frontOutlineColourId, accent.withAlpha (0.7f));
 
-    tabs->addTab ("Delay",   theme::panel, new DelayPage   (processor, slot, accent), true);
     using Stage = StagesPage::Stage;
 
     // In signal order within a position: saturation, bit-crush, downsample,
@@ -411,7 +525,11 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
         { ids::rgBlurOn,   "Blur",   { { ids::rgBlurMs,     "Time" } } },
     };
 
-    tabs->addTab ("Degrade",  theme::panel, new StagesPage (processor, slot, accent, degrade), true);
+    // The tabs in signal order: the dynamics act on the band as it is cut
+    // out, the spectral effects inside the same frame, then the delay and
+    // the degrade stages placed around it.
+    tabs->addTab ("Dynamics", theme::panel, new DynamicsPage (processor, slot, accent), true);
+
     // Pitch, freeze and blur need the FFT: in the Live engine the tab is
     // dimmed and says so, its settings kept for when the engine comes back.
     auto* spectralPage = new StagesPage (processor, slot, accent, spectralStages);
@@ -420,6 +538,9 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
                               "effect in the Live engine");
     tabs->addTab (processor.isLiveEngine() ? "Spectral (off in Live)" : "Spectral",
                   theme::panel, spectralPage, true);
+
+    tabs->addTab ("Delay",   theme::panel, new DelayPage  (processor, slot, accent), true);
+    tabs->addTab ("Degrade", theme::panel, new StagesPage (processor, slot, accent, degrade), true);
 
     tabs->setCurrentTabIndex (juce::jlimit (0, tabs->getNumTabs() - 1, wanted));
     tabs->tracking = true;

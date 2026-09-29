@@ -164,8 +164,22 @@ a region take only the peaks of its band, or only its noise floor, which no
 filter can do. A per-bin ceiling mirrors the gate (bins louder than it are
 muted), so a region can also keep only the level window between the two
 lines, for instance the quiet tails and room of a sound without its loud
-notes. A global knee turns both switches into smooth transitions a given
-number of dB wide.
+notes.
+
+**Dynamics** (the region popup's first tab, per region, `fxme::BandDynamics`
+in FxmeTools). The two lines are not only switches: under the gate is a
+downward expander (a ratio from 1:1 to 1:20 and infinity, the default and the
+original hard gate, with a range: how far down it goes, -inf by default),
+over the ceiling a compressor (1:1 to 20:1), a limiter (infinity) or a cut
+(the default and the original ceiling). Each line has its own knee (a
+transition that many dB wide, a quadratic join for the ratios, a smoothstep
+for the gate and the cut), attack and release. In the Spectral engine this
+acts on each bin's own level, followed once per hop: a spectral expander /
+compressor (a tone through the Hann window spreads over three bins, each
+compressed by its own level; its level comes back as 2/3 of the centre's
+gain plus 1/3 of the neighbours'). In the Live engine it acts on the band's
+level, per sample: a classic multiband expander / compressor. The makeup gain
+is the region's own gain handle.
 
 Each region can also be transformed inside the frame, before it leaves the
 splitter: **pitch shift** (fractional semitones), **freeze** (tonal, or a
@@ -226,8 +240,8 @@ The `engine` parameter (global controls, not automatable) picks what cuts the
 regions out of the input. **Spectral** (the default) is the splitter above.
 **Live** is `fxme::FilterBankSplitter`: per region an `fxme::EdgeBandPass`
 (4th-order Butterworth each side, 24 dB per octave) on the mono input, then an
-`fxme::BandGate` on the band's level, then its gain. Everything after the band
-(degrade, pan, Dry, delay, send, solo, meters) is shared and
+`fxme::BandDynamicsProcessor` on the band's level, then its gain. Everything
+after the band (degrade, pan, Dry, delay, send, solo, meters) is shared and
 does not know which engine fed it.
 
 | | Spectral (default) | Live |
@@ -355,12 +369,17 @@ never renamed.
 Global: `dryLevel`, `wetLevel` (the summed delays), `outLevel`, the shared
 reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel` (the first three in the
 global controls callout, `GlobalPanel`, opened from the gear in the top bar).
-Also in that callout: `fftSize` (choice, 1024 to 16384
-points, not automatable), `gateKnee` (dB, the width of the transition around
-every gate and ceiling line; 0 is a hard switch), `gateAtk` and `gateRel` (ms,
-the splitter's per-bin attack and release, applied once per hop). Presets
-recall them like any other parameter, the FFT size (and so the latency)
-included.
+Also in that callout: `engine`, `bands`, `panlaw` and `fftSize` (choices,
+not automatable). Presets recall them like any other parameter, the FFT size
+(and so the latency) included.
+
+Dynamics, per region (the Dynamics tab): `gtrat` (gate ratio 1 to 20, 21 =
+infinite, a hard gate, the default), `gtrng` (gate range, -80 = -inf, the
+default, to 0 dB), `clrat` (ceiling ratio 1 to 20, 21 = infinite, a limiter,
+22 = cut, the default), and per line a knee (`gtkn`, `clkn`, 0 to 24 dB,
+default 0), an attack (`gtatk`, `clatk`, 0.1 to 100 ms, default 5) and a
+release (`gtrel`, `clrel`, 5 to 2000 ms, default 80). The defaults are the
+original gate and ceiling.
 
 Per region: `on` (slot in use), `act` (fed by its band, default on), `solo`
 (not automatable; saved in presets like the rest, so a preset recalls

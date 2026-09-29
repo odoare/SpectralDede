@@ -4,6 +4,55 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Per-region dynamics: expander and compressor around the two lines (2026-09-29)
+
+The global gate knee, attack and release are gone; each region has its own
+dynamics, in a new **Dynamics** tab, the first of the region popup. The tabs
+are now in signal order: Dynamics, Spectral, Delay, Degrade. It replaces the
+planned detector smoothing (todo item 8, dropped).
+
+- **The two lines keep their role and gain a response.** Under the gate
+  (dashed line): a downward expander, Ratio from 1:1 to 1:20 and then
+  infinity (a hard gate), with a Range (how far down it goes, to -inf).
+  Over the ceiling (dotted line): Ratio from 1:1 to 20:1, then infinity (a
+  limiter), then **cut** (mute over the line, the original ceiling). Each
+  line has its own Knee, Attack and Release. The defaults (hard gate, range
+  -inf, cut, no knee, 5 and 80 ms) are the original behaviour, so presets
+  sound as before.
+- **Spectral engine:** per bin, each bin's gain following its own level (a
+  spectral expander / compressor), once per hop; each bin now carries two
+  smoothed gains (gate and ceiling, their own times). **Live engine:** on the
+  band's level, per sample: a classic multiband compressor / expander.
+- **UI:** the tab shows the two groups side by side (Gate: Ratio, Range,
+  Knee, Attack, Release; Ceiling: Ratio, Knee, Attack, Release), each dimmed
+  while its line is parked at the end of its range (off), the ceiling's
+  heading naming its mode (compressor, limiter, cut). The popup is one knob
+  wider. The Gate section of the global controls is gone.
+- **FxmeTools core:** `BandDynamics.h` (new): `fxme::BandDynamics` (the
+  settings) and `fxme::DynamicsCurve` (the static curves, a logarithm only
+  where the answer is not 0 or 1). `SpectralBandSplitter::setBandDynamics`,
+  `FilterBankSplitter::setBandDynamics`, `BandGate::setDynamics`; the global
+  `setGateKnee` / `setGateTimes` remain and set every band. Core test
+  `CoreDynamicsTests`: the curves (expander 1:2 and 1:4, range, hard gate,
+  compressor 4:1, limiter, cut, 12 dB knees continuous and monotonic); a
+  live 4:1 compressor takes a tone 12 dB over to -8.99 dB, a live 1:2
+  expander a tone 10 dB under to -10.00 dB; the spectral compressor lands
+  on the three-bin prediction to 0.01 dB. All earlier tests unchanged.
+- **Parameters:** `gtrat`, `gtrng`, `gtkn`, `gtatk`, `gtrel`, `clrat`,
+  `clkn`, `clatk`, `clrel` per region; `gateKnee`, `gateAtk`, `gateRel`
+  removed. Presets re-saved with the per-region values equal to the old
+  global ones (379 parameters each).
+- The makeup gain is the region's gain handle.
+- **Renamed the same day:** `fxme::BandGate` is now
+  `fxme::BandDynamicsProcessor` (it compresses too); older entries here keep
+  the old name.
+- **Fixed the same day:** the ceiling's attack and release were swapped
+  (its gain followed the attack when rising, as the gate's does, where for a
+  ceiling rising is letting go). A longer release made the compressor
+  compress less. Now the ceiling pulls down on its attack and recovers on its
+  release, in both engines, the cut included; a core test checks a 2 ms /
+  500 ms compressor pulls down in 2.1 ms and lets go in 500 ms.
+
 ## Touching regions rebuild the dry signal exactly; sharper attacks (2026-09-29)
 
 Question: why do regions covering the whole spectrum not sound like the dry

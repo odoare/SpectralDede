@@ -12,7 +12,6 @@
         (balance or stereo pan); and the spectral engine's FFT size, with
         what the choice comes to (latency, bin width and gate step, or what
         Live gives up).
-      - Gate: attack, release and knee, shared by every region.
 
     All of them are ordinary parameters, saved with the session and recalled
     by presets like any other (a preset recalls the sound as heard, the
@@ -60,12 +59,11 @@ private:
     std::unique_ptr<ComboBoxAttachment> engineAttachment, bandsAttachment, panLawAttachment,
                                         fftSizeAttachment;
 
-    fxme::FxmeSlider attackKnob, releaseKnob, kneeKnob;
     fxme::InfoButton infoButton;
 
     juce::StringArray readout;
     juce::Rectangle<int> titleArea, reverbHeading, engineHeading, engineLabel, bandsLabel,
-                         panLawLabel, fftLabel, readoutArea, gateHeading;
+                         panLawLabel, fftLabel, readoutArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalPanel)
 };

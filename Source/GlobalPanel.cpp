@@ -67,17 +67,11 @@ namespace
         "The latency is one window, reported to the host. A change is applied "
         "at once: expect about one window of silence at the switch. Presets "
         "recall it like any other setting.\n\n"
-        "Gate (shared by every region)\n"
-        "  Attack: how fast a bin opens once it rises over the gate (or falls "
-        "under the ceiling)\n"
-        "  Release: how fast it closes again. Longer releases let tails through "
-        "and stop the gate from warbling on noisy material.\n"
-        "  Knee: at 0 a bin is passed or cut outright; wider, it fades in and "
-        "out across that many dB around each line.\n"
-        "In the Spectral engine the gates move once per hop, a quarter of the "
-        "window (the gate step shown under the FFT size), so an attack shorter "
-        "than that is effectively instant. In the Live engine they move every "
-        "sample, so every attack time is meaningful.";
+        "Each region's gate and ceiling (ratios, range, knees, attacks and "
+        "releases) are in its own Dynamics tab. In the Spectral engine they "
+        "move once per hop, a quarter of the window (the gate step shown "
+        "under the FFT size), so an attack shorter than that is effectively "
+        "instant; in the Live engine they move every sample.";
 
     void setUpKnob (juce::Component& parent, fxme::FxmeSlider& knob, juce::Colour accent)
     {
@@ -102,10 +96,7 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     : processor (p),
       roomKnob    (p.getAPVTS(), ids::revRoom,     "Room",    theme::specViolet),
       dampKnob    (p.getAPVTS(), ids::revDamp,     "Damping", theme::specViolet),
-      widthKnob   (p.getAPVTS(), ids::revWidth,    "Width",   theme::specViolet),
-      attackKnob  (p.getAPVTS(), ids::gateAttack,  "Attack",  theme::accent),
-      releaseKnob (p.getAPVTS(), ids::gateRelease, "Release", theme::accent),
-      kneeKnob    (p.getAPVTS(), ids::gateKnee,    "Knee",    theme::accent)
+      widthKnob   (p.getAPVTS(), ids::revWidth,    "Width",   theme::specViolet)
 {
     for (auto* k : { &roomKnob, &dampKnob, &widthKnob })
         setUpKnob (*this, *k, theme::specViolet);
@@ -134,8 +125,6 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     fftSizeAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
                                                               ids::fftSize, fftSizeBox);
 
-    for (auto* k : { &attackKnob, &releaseKnob, &kneeKnob })
-        setUpKnob (*this, *k, theme::accent);
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Global controls", infoBody);
@@ -148,8 +137,7 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     const int width  = knobsPerRow * knobWidth + 2 * panelMargin;
     const int height = panelMargin + titleHeight + sectionGap
                      + headingHeight + knobHeight + sectionGap
-                     + headingHeight + 4 * rowHeight + 2 * readoutLine + sectionGap
-                     + headingHeight + knobHeight + panelMargin;
+                     + headingHeight + 4 * rowHeight + 2 * readoutLine + panelMargin;
     setSize (width, height);
 }
 
@@ -207,7 +195,6 @@ void GlobalPanel::paint (juce::Graphics& g)
 
     paintHeading (g, "Reverb", reverbHeading);
     paintHeading (g, "Engine", engineHeading);
-    paintHeading (g, "Gate",   gateHeading);
 
     g.setColour (theme::dimText);
     g.setFont (juce::Font (juce::FontOptions (12.0f)));
@@ -256,10 +243,6 @@ void GlobalPanel::resized()
     comboRow (panLawLabel, panLawBox);
     comboRow (fftLabel,    fftSizeBox);
     readoutArea = area.removeFromTop (2 * readoutLine);
-    area.removeFromTop (sectionGap);
-
-    gateHeading = area.removeFromTop (headingHeight);
-    knobRow ({ &attackKnob, &releaseKnob, &kneeKnob });
 }
 
 //==============================================================================

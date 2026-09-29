@@ -28,13 +28,19 @@ namespace
         "  drag the dashed line to set the gate: what rises above it passes\n"
         "  drag the dotted line to set the ceiling: what rises above it is cut\n"
         "    (at the top it is off; the two lines push each other apart)\n"
+        "    what the lines do exactly is the region's Dynamics tab: under the\n"
+        "    gate an expander (a hard gate by default, with a range), over the\n"
+        "    ceiling a compressor, a limiter or a cut (the default), each with\n"
+        "    its knee, attack and release; per bin in Spectral, a multiband\n"
+        "    compressor / expander in Live\n"
         "  drag the round handle for gain (up/down) and pan (left/right)\n"
-        "  click a region to open its settings: delay; degrade (saturation,\n"
+        "  click a region to open its settings, in signal order: dynamics;\n"
+        "    spectral (pitch in semitones, freeze tonal or wash, blur); delay;\n"
+        "    degrade (saturation,\n"
         "    bit-crush, downsample and shift, a pitch shift in semitones, each\n"
         "    placed before the delay, in its loop, where every repeat goes\n"
         "    through it again (shift there climbs by its interval at each\n"
-        "    repeat), or after it); spectral (pitch in semitones, freeze tonal\n"
-        "    or wash, blur)\n"
+        "    repeat), or after it)\n"
         "  a region's Dry adds its own band, panned and through the stages placed\n"
         "    before the delay, but not delayed,\n"
         "    on top of the global dry; its reverb send takes Dry and Delay after\n"
@@ -66,9 +72,8 @@ namespace
         "(RMS bars, peak markers held for a second, red over 0 dBFS).\n\n"
         "The gear button opens the global controls: the shared reverb (room, "
         "damping, width), the engine (Spectral, or Live for zero latency), "
-        "stereo or mono bands and the pan law, the FFT size, and the gate's "
-        "attack, release and knee, shared by every region. Its own help button "
-        "explains each.";
+        "stereo or mono bands and the pan law, and the FFT size. Its own help "
+        "button explains each.";
 }
 
 //==============================================================================
@@ -87,7 +92,7 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     presetBrowserButton.setColour (juce::TextButton::textColourOffId, theme::accent);
     presetBrowserButton.onClick = [this] { showPresetBrowser(); };
 
-    globalButton.setTooltip ("Global controls: reverb, FFT size, gate timing and knee");
+    globalButton.setTooltip ("Global controls: reverb, engine, bands and FFT size");
     globalButton.onClick = [this] { showGlobalPanel(); };
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });

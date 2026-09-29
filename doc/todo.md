@@ -74,23 +74,9 @@ window size (the `fftSize` parameter, item 6, done), the same window and dB
 scale, the peak detector and no temporal averaging, all locked (see
 `architecture.md`, "The view measures exactly as the gates do"). The gate
 itself compares raw per-bin magnitudes every hop (about 11 ms) and smooths
-only the gain it applies, with the attack and release of item 7 (done).
-
-### 8. Gate detector smoothing, matched to the view (later)
-
-*Not mandatory. Only if the gate still warbles on noisy material with a
-longer release (item 7, done).*
-
-Smooth each bin's level before the threshold comparison (an exponential
-average of `magSq` across hops, time constant as a parameter), so the gate
-reacts to a sustained level rather than to every frame. Then set the view's
-averaging from the same parameter (N about τ / 40 ms, its 25 Hz frame), so the
-plotted trace is the level the gate compares. Those badges are locked since
-item 6 (`setMeasurementLocked`): unlock, set the view state, lock again. This is an
-FxmeTools change (`SpectralBandSplitter`: a per-band smoothed-level array and a
-setter), so it needs a core test and an `api-changes.md` entry. Costs one
-multiply-add per bin per region per hop, and it delays the gate's opening on
-attacks by roughly the time constant.
+only the gain it applies, with each region's attack and release (its
+Dynamics tab). Item 8 (detector smoothing, matched to the view) was dropped:
+per-region dynamics replaced it.
 
 ### 16b. Smoothing times in the global controls
 

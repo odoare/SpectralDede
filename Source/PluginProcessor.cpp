@@ -111,25 +111,8 @@ DedeAudioProcessor::createParameterLayout()
         ParameterID { ids::fftSize, 1 }, "FFT Size", fftSizeNames, defaultFftSizeIndex,
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
-    // ---- Spectral gate, shared by every region ------------------------------
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ids::gateKnee, 1 }, "Gate knee",
-        NormalisableRange<float> (0.0f, maxGateKneeDb, 0.1f), 0.0f,
-        AudioParameterFloatAttributes().withStringFromValueFunction (
-            [] (float x, int) { return x <= 0.0f ? String ("hard")
-                                                 : String (x, 1) + " dB"; })));
-
     const auto msToText = [] (float x, int) { return String (x, x < 10.0f ? 1 : 0) + " ms"; };
-
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ids::gateAttack, 1 }, "Gate attack",
-        logRange (minGateAttackMs, maxGateAttackMs, 0.1f), defaultGateAttackMs,
-        AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
-
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ids::gateRelease, 1 }, "Gate release",
-        logRange (minGateReleaseMs, maxGateReleaseMs, 0.1f), defaultGateReleaseMs,
-        AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
+    const auto kneeToText = [] (float x, int) { return x <= 0.0f ? String ("hard") : String (x, 1) + " dB"; };
 
     // ---- Region slots ------------------------------------------------------
     const StringArray modeNames { "Seconds", "DAW sync", "MIDI note" };
@@ -230,6 +213,50 @@ DedeAudioProcessor::createParameterLayout()
             ParameterID { id (ids::rgSend), 1 }, slot + "Reverb Send",
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
+
+        // ---- Dynamics around the two lines: a hard gate and a cut by default --
+        {
+            NormalisableRange<float> gateRatioRange (1.0f, infiniteRatio, 0.01f);
+            gateRatioRange.setSkewForCentre (4.0f);
+            layout.add (std::make_unique<AudioParameterFloat> (
+                ParameterID { id (ids::rgGateRatio), 1 }, slot + "Gate Ratio", gateRatioRange, infiniteRatio,
+                AudioParameterFloatAttributes().withStringFromValueFunction (
+                    [] (float x, int) { return x >= infiniteRatio - 0.5f ? String ("1:inf (gate)")
+                                                                         : "1:" + String (x, x < 10.0f ? 1 : 0); })));
+
+            layout.add (std::make_unique<AudioParameterFloat> (
+                ParameterID { id (ids::rgGateRange), 1 }, slot + "Gate Range",
+                NormalisableRange<float> (minGateRangeDb, 0.0f, 0.1f), minGateRangeDb,
+                AudioParameterFloatAttributes().withStringFromValueFunction (
+                    [] (float x, int) { return x <= minGateRangeDb ? String ("-inf dB") : String (x, 1) + " dB"; })));
+
+            NormalisableRange<float> ceilRatioRange (1.0f, cutRatio, 0.01f);
+            ceilRatioRange.setSkewForCentre (4.0f);
+            layout.add (std::make_unique<AudioParameterFloat> (
+                ParameterID { id (ids::rgCeilRatio), 1 }, slot + "Ceiling Ratio", ceilRatioRange, cutRatio,
+                AudioParameterFloatAttributes().withStringFromValueFunction (
+                    [] (float x, int) { return isCeilingCut (x) ? String ("cut")
+                                             : x >= infiniteRatio - 0.5f ? String ("inf:1 (limit)")
+                                                                          : String (x, x < 10.0f ? 1 : 0) + ":1"; })));
+
+            for (const auto* knee : { ids::rgGateKnee, ids::rgCeilKnee })
+                layout.add (std::make_unique<AudioParameterFloat> (
+                    ParameterID { id (knee), 1 }, slot + (knee == ids::rgGateKnee ? "Gate Knee" : "Ceiling Knee"),
+                    NormalisableRange<float> (0.0f, maxKneeDb, 0.1f), 0.0f,
+                    AudioParameterFloatAttributes().withStringFromValueFunction (kneeToText)));
+
+            for (const auto* attack : { ids::rgGateAttack, ids::rgCeilAttack })
+                layout.add (std::make_unique<AudioParameterFloat> (
+                    ParameterID { id (attack), 1 }, slot + (attack == ids::rgGateAttack ? "Gate Attack" : "Ceiling Attack"),
+                    logRange (minAttackMs, maxAttackMs, 0.01f), defaultAttackMs,
+                    AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
+
+            for (const auto* release : { ids::rgGateRelease, ids::rgCeilRelease })
+                layout.add (std::make_unique<AudioParameterFloat> (
+                    ParameterID { id (release), 1 }, slot + (release == ids::rgGateRelease ? "Gate Release" : "Ceiling Release"),
+                    logRange (minReleaseMs, maxReleaseMs, 0.1f), defaultReleaseMs,
+                    AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
+        }
 
         // ---- Degrade: saturation -> bit-crush -> downsample -> shift, all off --
         layout.add (std::make_unique<AudioParameterBool> (
@@ -366,6 +393,11 @@ void DedeAudioProcessor::configureEngine (bool live, int order, bool stereo, boo
 {
     stereoBands.store (stereo);
 
+    // A freshly prepared splitter starts from default dynamics: send every
+    // region's again on the next block.
+    for (auto& stale : dynamicsStale)
+        stale = true;
+
     if (live)
     {
         // The filter bank: no FFT, so no latency, and the dry path is not
@@ -404,6 +436,8 @@ void DedeAudioProcessor::setDryLatency (int latency)
 void DedeAudioProcessor::configureSpectralEngine (int order)
 {
     splitter.prepare (sampleRate, preparedBlockSize, maxRegions, order, stereoBands.load() ? 2 : 1);
+    for (auto& stale : dynamicsStale)
+        stale = true;
 
     // Each band leaves the splitter mono (gain applied, no pan) so the degrade
     // chain treats both sides alike; the pan is applied after it.
@@ -476,9 +510,6 @@ void DedeAudioProcessor::cacheParameterPointers()
     pRevDamp  = raw (ids::revDamp);
     pRevWidth = raw (ids::revWidth);
     pRevLevel = raw (ids::revLevel);
-    pGateKnee = raw (ids::gateKnee);
-    pGateAttack  = raw (ids::gateAttack);
-    pGateRelease = raw (ids::gateRelease);
     pFftSize  = raw (ids::fftSize);
     pEngine   = raw (ids::engine);
     pBandMode = raw (ids::bandMode);
@@ -513,6 +544,16 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.crushBits = raw (ids::region (i, ids::rgCrushBits));
         r.dsOn     = raw (ids::region (i, ids::rgDsOn));
         r.dsFactor = raw (ids::region (i, ids::rgDsFactor));
+        r.gateRatio   = raw (ids::region (i, ids::rgGateRatio));
+        r.gateRange   = raw (ids::region (i, ids::rgGateRange));
+        r.gateKnee    = raw (ids::region (i, ids::rgGateKnee));
+        r.gateAttack  = raw (ids::region (i, ids::rgGateAttack));
+        r.gateRelease = raw (ids::region (i, ids::rgGateRelease));
+        r.ceilRatio   = raw (ids::region (i, ids::rgCeilRatio));
+        r.ceilKnee    = raw (ids::region (i, ids::rgCeilKnee));
+        r.ceilAttack  = raw (ids::region (i, ids::rgCeilAttack));
+        r.ceilRelease = raw (ids::region (i, ids::rgCeilRelease));
+
         r.shiftOn  = raw (ids::region (i, ids::rgShiftOn));
         r.shiftSt  = raw (ids::region (i, ids::rgShiftSt));
         r.satPos   = raw (ids::region (i, ids::rgSatPos));
@@ -713,6 +754,19 @@ void DedeAudioProcessor::updateBands()
         else
             splitter.setBand (i, band);
 
+        // The dynamics around the lines, passed on only when they change (a
+        // change rebuilds the band's curve).
+        const auto dyn = regionDynamics (i);
+        if (! sameDynamics (dyn, sentDynamics[i]) || dynamicsStale[i])
+        {
+            if (live)
+                filterBank.setBandDynamics (i, dyn);
+            else
+                splitter.setBandDynamics (i, dyn);
+            sentDynamics[i] = dyn;
+            dynamicsStale[i] = false;
+        }
+
         fxme::SpectralBandEffects::Settings fx;
         fx.pitchOn        = r.pitchOn->load() > 0.5f;
         fx.pitchSemitones = r.pitchSt->load();
@@ -723,6 +777,36 @@ void DedeAudioProcessor::updateBands()
         fx.blurSeconds    = r.blurMs->load() * 0.001f;
         spectral.setBand (i, fx);
     }
+}
+
+fxme::BandDynamics DedeAudioProcessor::regionDynamics (int slot) const
+{
+    const auto& r = regions[slot];
+    fxme::BandDynamics d;
+
+    d.gateRatio   = ratioFromParameter (r.gateRatio->load());
+    const float range = r.gateRange->load();
+    d.gateRangeDb = range <= minGateRangeDb ? -fxme::BandDynamics::infinity : range;
+    d.gateKneeDb  = r.gateKnee->load();
+    d.gateAttackSeconds  = r.gateAttack->load()  * 0.001f;
+    d.gateReleaseSeconds = r.gateRelease->load() * 0.001f;
+
+    const float ceilRatio = r.ceilRatio->load();
+    d.ceilingCut   = isCeilingCut (ceilRatio);
+    d.ceilingRatio = ratioFromParameter (ceilRatio);
+    d.ceilingKneeDb = r.ceilKnee->load();
+    d.ceilingAttackSeconds  = r.ceilAttack->load()  * 0.001f;
+    d.ceilingReleaseSeconds = r.ceilRelease->load() * 0.001f;
+    return d;
+}
+
+bool DedeAudioProcessor::sameDynamics (const fxme::BandDynamics& a, const fxme::BandDynamics& b) noexcept
+{
+    return a.gateRatio == b.gateRatio && a.gateRangeDb == b.gateRangeDb && a.gateKneeDb == b.gateKneeDb
+        && a.gateAttackSeconds == b.gateAttackSeconds && a.gateReleaseSeconds == b.gateReleaseSeconds
+        && a.ceilingCut == b.ceilingCut && a.ceilingRatio == b.ceilingRatio
+        && a.ceilingKneeDb == b.ceilingKneeDb && a.ceilingAttackSeconds == b.ceilingAttackSeconds
+        && a.ceilingReleaseSeconds == b.ceilingReleaseSeconds;
 }
 
 float DedeAudioProcessor::sendLevel (int slot) const
@@ -1277,20 +1361,6 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     updateTransportAndMidi (midiMessages);
 
-    // Before updateBands(): a knee change recomputes every band's thresholds,
-    // and setBand() then works from the new knee.
-    // Two exponentials for the times: cheap enough to recompute every block.
-    const float attack = pGateAttack->load() * 0.001f, release = pGateRelease->load() * 0.001f;
-    if (liveEngine.load())
-    {
-        filterBank.setGateKnee (pGateKnee->load());
-        filterBank.setGateTimes (attack, release);
-    }
-    else
-    {
-        splitter.setGateKnee (pGateKnee->load());
-        splitter.setGateTimes (attack, release);
-    }
     updateBands();
 
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
