@@ -198,7 +198,10 @@ mean the same thing in both engines for tonal material. For anything
 noise-like, a band's level sums all its bins and sits above the trace. So in
 Live the view shows each region's band level (`getBandLevelDb`) as a shaded
 column topped by a solid line (`SpectrumRegionEditor::setLevelMarkersEnabled`),
-and the gate and ceiling are set against that. The detector averages the
+and the gate and ceiling are set against that. With the view's hold on, a
+dashed line in each region shows the band level's held maximum, fed with
+sample-accurate peaks from the band gates (`takeBandPeakLevelDb`), as the
+held line over the spectrum does per frequency in both engines. The detector averages the
 squared band over about one period of its lowest frequency (3 to 50 ms), so a
 low band does not ripple through its gate.
 

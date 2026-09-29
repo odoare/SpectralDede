@@ -55,7 +55,11 @@ namespace
         "  the view measures exactly as the gates do (same window size, peak\n"
         "    detector, no averaging), so a trace over a gate line passes it\n"
         "  in the Live engine the gates compare each band's whole level instead:\n"
-        "    it shows as a shaded column in each region, topped by a solid line\n\n"
+        "    it shows as a shaded column in each region, topped by a solid line\n"
+        "  the hold badge keeps the loudest levels for a while (off, 1, 3, 10 s,\n"
+        "    or for good): a thin line over the spectrum, and in Live a dashed\n"
+        "    line in each region, to place a gate against the loudest the sound\n"
+        "    has been rather than against a moving trace. Changing it starts over\n\n"
         "Under the region rows: the levels of the dry signal, the summed "
         "delays, the reverb return and the output trim, then the output meter "
         "(RMS bars, peak markers held for a second, red over 0 dBFS).\n\n"
@@ -119,6 +123,9 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
         auto view = spectrum.getViewState();
         view.mode = fxme::SpectrumDisplay::Mode::peak;
         view.averaging = false;
+        // Held maxima on by default: they are what a gate is best placed
+        // against. The "hold" badge changes it (off, 1, 3, 10 s, for good).
+        view.holdSeconds = 3.0f;
         spectrum.setViewState (view);
         spectrum.setMeasurementLocked (true);
     }
@@ -399,7 +406,8 @@ void DedeAudioProcessorEditor::timerCallback()
     spectrum.setLevelMarkersEnabled (live);
     if (live)
         for (int i = 0; i < maxRegions; ++i)
-            spectrum.setRegionLevel (i, processor.getBandLevelDb (i));
+            spectrum.setRegionLevel (i, processor.getBandLevelDb (i),
+                                     processor.takeBandPeakLevelDb (i));
 }
 
 void DedeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)

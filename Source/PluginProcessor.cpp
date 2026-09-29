@@ -772,6 +772,11 @@ float DedeAudioProcessor::getBandLevelDb (int slot) const noexcept
     return liveEngine.load() ? filterBank.getBandLevelDb (slot) : -200.0f;
 }
 
+float DedeAudioProcessor::takeBandPeakLevelDb (int slot) noexcept
+{
+    return liveEngine.load() ? filterBank.takeBandPeakLevelDb (slot) : -200.0f;
+}
+
 void DedeAudioProcessor::applyKeepInBand (int slot, float* x, int numSamples)
 {
     const auto& r = regions[slot];

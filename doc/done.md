@@ -4,6 +4,29 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Held maxima, to place the gates (2026-09-29)
+
+Not a todo item. A visual aid for setting the gate (and ceiling) against the
+loudest the sound has been lately, rather than against a moving trace.
+
+- **Spectrum (both engines):** a max-hold on the trace, per frequency: each
+  point keeps its highest level for the hold time, then falls at 20 dB/s.
+  Drawn as a thin, lighter line under the trace. Since the view measures as
+  the spectral gates do, the held line is exactly the loudest each bin group
+  has been as the gates saw it (at the view's 25 Hz frame rate: at 1024
+  points, parts of the signal fall between two frames).
+- **Live engine:** in each region, the band level's held maximum as a dashed
+  line over the level marker. Fed with sample-accurate peaks from the band
+  gates (`takeBandPeakLevelDb`), so a short hit between two GUI frames still
+  registers.
+- **The hold time** is the view's new "hold" badge (off, 1, 3, 10 s, or for
+  good; 3 s when the editor opens). Changing it starts the held levels over,
+  which is also the way to clear a held-for-good line.
+- FxmeTools: `SpectrumDisplay::setHoldSeconds` and the badge,
+  `SpectrumRegionEditor::setRegionLevel (index, db, peakDb)`,
+  `BandGate::takePeakLevelDb`, `FilterBankSplitter::takeBandPeakLevelDb`, with
+  a core test for the peak.
+
 ## 17. Live engine: filter bank, zero latency (2026-09-29)
 
 A second engine beside the spectral one, chosen in the global controls

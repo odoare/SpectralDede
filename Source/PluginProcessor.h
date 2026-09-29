@@ -87,6 +87,11 @@ public:
         engine, whose gates compare the trace itself. Any thread. */
     float getBandLevelDb (int slot) const noexcept;
 
+    /** A region's highest band level since the previous call (live engine),
+        for the view's held maxima; -200 in the spectral engine. From one
+        reader, the editor's timer. */
+    float takeBandPeakLevelDb (int slot) noexcept;
+
     /** A region's output level in dBFS (RMS over 100 ms), channel 0 or 1,
         measured before the solo gain. For the region column's meters; any
         thread. */
