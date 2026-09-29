@@ -4,6 +4,43 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Layout: left column with the levels and an output meter; global controls (2026-09-29)
+
+- **The bottom row is gone**, and the spectrum view takes the full height.
+- **Left column**, top to bottom: the region rows, stretched over whatever
+  height the rest leaves (about 40 px each at the default size, down from
+  about 60), the four levels in a 2 x 2 grid (Dry, Delays, Reverb
+  return, Output), and at the very bottom a stereo **output meter**
+  (`Source/OutputMeter.{h,cpp}`): horizontal L and R bars, RMS over 100 ms,
+  peak markers held for a second then falling, red over 0 dBFS, a scale from
+  -48 to 0 dB. The processor measures its output after the trim with two
+  `fxme::VuMeter`s: `getOutputLevelDb (ch)` for the RMS, and
+  `takeOutputPeakDb (ch)`, which returns the highest peak since the previous
+  call, so no peak between two GUI frames is missed.
+- **Global controls.** The options callout is renamed "Global controls"
+  (`OptionsPanel` became `GlobalPanel`, same files renamed), and the reverb's
+  Room, Damping and Width moved into it, in a Reverb section above Engine and
+  Gate. Its help text covers the reverb too.
+- The minimum window height went from 480 to 520, so the rows, the knobs
+  and the meter still fit.
+
+## Saturation keeps its level as the drive rises (2026-09-28)
+
+Raising a region's saturation drive made it quieter. The output was divided
+by the drive, which is unity for small signals, but a band that clips is
+capped at the curve's rail whatever the drive, so the division then took off
+as many dB as the drive added (26 dB quieter at 36 dB of drive on a loud
+tone). The division stays (it is instant and right for small signals), and a
+new `fxme::LevelMatcher` (FxmeTools core) after it brings the result back to
+the band's RMS before the saturator, measured with 200 ms followers. The
+output's energy now stays constant from 0 to 48 dB of drive, for every model
+and at every level (core test: within 0.01 dB), and the drive only changes
+the character.
+
+What it does not change: Class AB's crossover notch still swallows a quiet
+band whole at low drive (the output is silent, and the matcher does not
+invent a signal); more drive brings it through.
+
 ## 16 and 7. Options window, with the FFT size and the gate timing (2026-09-28)
 
 A gear button in the top bar, between the preset browser's "..." and the help

@@ -1,8 +1,8 @@
 /*
   ------------------------------------------------------------------------------
-    OptionsPanel.cpp
+    GlobalPanel.cpp
 
-    See OptionsPanel.h.
+    See GlobalPanel.h.
 
     Author: Olivier Doaré, github.com/odoare
     (c) 2026 Olivier Doaré
@@ -10,7 +10,7 @@
   ------------------------------------------------------------------------------
 */
 
-#include "OptionsPanel.h"
+#include "GlobalPanel.h"
 
 using namespace dede;
 
@@ -24,9 +24,14 @@ namespace
     constexpr int sectionGap    = 10;
     constexpr int knobWidth     = 74;
     constexpr int knobHeight    = 82;
-    constexpr int numGateKnobs  = 3;
+    constexpr int knobsPerRow   = 3;
 
     const char* const infoBody =
+        "Reverb\n"
+        "One reverb shared by every region, fed by each region's Reverb send. "
+        "Room is its size and decay, Damping how fast the highs die away, "
+        "Width its stereo spread. Its return level is the Reverb knob in the "
+        "left column.\n\n"
         "Engine\n"
         "The FFT size is the window of the spectral splitter: the regions, "
         "their gates and ceilings, and the spectral effects all work on it, "
@@ -49,50 +54,65 @@ namespace
         "shown under the FFT size), so an attack shorter than that is "
         "effectively instant.";
 
-    void setUpKnob (juce::Component& parent, fxme::FxmeSlider& knob)
+    void setUpKnob (juce::Component& parent, fxme::FxmeSlider& knob, juce::Colour accent)
     {
         knob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         knob.setShowLabel (true);
-        theme::styleKnob (knob, theme::accent);
+        theme::styleKnob (knob, accent);
         parent.addAndMakeVisible (knob);
+    }
+
+    void paintHeading (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> area)
+    {
+        g.setColour (theme::text);
+        g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
+        g.drawText (text, area, juce::Justification::centredLeft);
+        g.setColour (theme::panelLine);
+        g.fillRect (area.withTop (area.getBottom() - 1).withHeight (1).toFloat());
     }
 }
 
 //==============================================================================
-OptionsPanel::OptionsPanel (DedeAudioProcessor& p)
+GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     : processor (p),
+      roomKnob    (p.getAPVTS(), ids::revRoom,     "Room",    theme::specViolet),
+      dampKnob    (p.getAPVTS(), ids::revDamp,     "Damping", theme::specViolet),
+      widthKnob   (p.getAPVTS(), ids::revWidth,    "Width",   theme::specViolet),
       attackKnob  (p.getAPVTS(), ids::gateAttack,  "Attack",  theme::accent),
       releaseKnob (p.getAPVTS(), ids::gateRelease, "Release", theme::accent),
       kneeKnob    (p.getAPVTS(), ids::gateKnee,    "Knee",    theme::accent)
 {
+    for (auto* k : { &roomKnob, &dampKnob, &widthKnob })
+        setUpKnob (*this, *k, theme::specViolet);
+
     fftSizeBox.addItemList (fftSizeNames, 1);
     theme::styleCombo (fftSizeBox, theme::accent);
     addAndMakeVisible (fftSizeBox);
     fftSizeAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
                                                               ids::fftSize, fftSizeBox);
 
-    setUpKnob (*this, attackKnob);
-    setUpKnob (*this, releaseKnob);
-    setUpKnob (*this, kneeKnob);
+    for (auto* k : { &attackKnob, &releaseKnob, &kneeKnob })
+        setUpKnob (*this, *k, theme::accent);
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
-    infoButton.setInfo ("Options", infoBody);
+    infoButton.setInfo ("Global controls", infoBody);
     addAndMakeVisible (infoButton);
 
     readout = engineText();
     startTimerHz (10);
 
-    const int width  = numGateKnobs * knobWidth + 2 * panelMargin;
+    const int width  = knobsPerRow * knobWidth + 2 * panelMargin;
     const int height = panelMargin + titleHeight + sectionGap
+                     + headingHeight + knobHeight + sectionGap
                      + headingHeight + rowHeight + 2 * readoutLine + sectionGap
                      + headingHeight + knobHeight + panelMargin;
     setSize (width, height);
 }
 
-OptionsPanel::~OptionsPanel() = default;
+GlobalPanel::~GlobalPanel() = default;
 
 //==============================================================================
-juce::StringArray OptionsPanel::engineText() const
+juce::StringArray GlobalPanel::engineText() const
 {
     const double sr = processor.getSampleRate() > 0.0 ? processor.getSampleRate() : 48000.0;
     const int size  = 1 << processor.getFftOrder();
@@ -102,7 +122,7 @@ juce::StringArray OptionsPanel::engineText() const
              "Bins " + juce::String (sr / size, 1) + " Hz wide, gate step " + ms (size / 4) };
 }
 
-void OptionsPanel::timerCallback()
+void GlobalPanel::timerCallback()
 {
     const auto text = engineText();
     if (text == readout)
@@ -112,7 +132,7 @@ void OptionsPanel::timerCallback()
     repaint (readoutArea);
 }
 
-void OptionsPanel::paint (juce::Graphics& g)
+void GlobalPanel::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
     g.setColour (theme::panel);
@@ -122,16 +142,11 @@ void OptionsPanel::paint (juce::Graphics& g)
 
     g.setColour (theme::accent);
     g.setFont (juce::Font (juce::FontOptions (13.0f).withStyle ("Bold")));
-    g.drawText ("Options", titleArea, juce::Justification::centredLeft);
+    g.drawText ("Global controls", titleArea, juce::Justification::centredLeft);
 
-    g.setColour (theme::text);
-    g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
-    g.drawText ("Engine", engineHeading, juce::Justification::centredLeft);
-    g.drawText ("Gate",   gateHeading,   juce::Justification::centredLeft);
-
-    g.setColour (theme::panelLine);
-    for (auto h : { engineHeading, gateHeading })
-        g.fillRect (h.withTop (h.getBottom() - 1).withHeight (1).toFloat());
+    paintHeading (g, "Reverb", reverbHeading);
+    paintHeading (g, "Engine", engineHeading);
+    paintHeading (g, "Gate",   gateHeading);
 
     g.setColour (theme::dimText);
     g.setFont (juce::Font (juce::FontOptions (12.0f)));
@@ -143,12 +158,23 @@ void OptionsPanel::paint (juce::Graphics& g)
         g.drawText (line, lines.removeFromTop (readoutLine), juce::Justification::centredLeft);
 }
 
-void OptionsPanel::resized()
+void GlobalPanel::resized()
 {
     auto area = getLocalBounds().reduced (panelMargin);
 
     titleArea = area.removeFromTop (titleHeight);
     infoButton.setBounds (titleArea.removeFromRight (titleHeight).reduced (1));
+    area.removeFromTop (sectionGap);
+
+    const auto knobRow = [&area] (std::initializer_list<fxme::FxmeSlider*> knobs)
+    {
+        auto row = area.removeFromTop (knobHeight);
+        for (auto* k : knobs)
+            k->setBounds (row.removeFromLeft (knobWidth).reduced (3));
+    };
+
+    reverbHeading = area.removeFromTop (headingHeight);
+    knobRow ({ &roomKnob, &dampKnob, &widthKnob });
     area.removeFromTop (sectionGap);
 
     engineHeading = area.removeFromTop (headingHeight);
@@ -159,9 +185,7 @@ void OptionsPanel::resized()
     area.removeFromTop (sectionGap);
 
     gateHeading = area.removeFromTop (headingHeight);
-    auto knobs = area.removeFromTop (knobHeight);
-    for (auto* k : { &attackKnob, &releaseKnob, &kneeKnob })
-        k->setBounds (knobs.removeFromLeft (knobWidth).reduced (3));
+    knobRow ({ &attackKnob, &releaseKnob, &kneeKnob });
 }
 
 //==============================================================================

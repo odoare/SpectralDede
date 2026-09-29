@@ -12,7 +12,7 @@
 
 #include "PluginEditor.h"
 #include "RegionPanel.h"
-#include "OptionsPanel.h"
+#include "GlobalPanel.h"
 
 using namespace dede;
 
@@ -54,11 +54,13 @@ namespace
         "  alt+drag or middle-drag pans, double-click resets\n"
         "  the view measures exactly as the gates do (same window size, peak\n"
         "    detector, no averaging), so a trace over a gate line passes it\n\n"
-        "The bottom row holds the levels of the dry signal, the summed delays "
-        "and the reverb return, the output trim, and the reverb itself.\n\n"
-        "The gear button opens the options: the FFT size (resolution against "
-        "latency) and the gate's attack, release and knee, shared by every "
-        "region. Its own help button explains each.";
+        "Under the region rows: the levels of the dry signal, the summed "
+        "delays, the reverb return and the output trim, then the output meter "
+        "(RMS bars, peak markers held for a second, red over 0 dBFS).\n\n"
+        "The gear button opens the global controls: the shared reverb (room, "
+        "damping, width), the FFT size (resolution against latency) and the "
+        "gate's attack, release and knee, shared by every region. Its own help "
+        "button explains each.";
 }
 
 //==============================================================================
@@ -76,13 +78,13 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     presetBrowserButton.setColour (juce::TextButton::textColourOffId, theme::accent);
     presetBrowserButton.onClick = [this] { showPresetBrowser(); };
 
-    optionsButton.setTooltip ("Options: FFT size, gate timing and knee");
-    optionsButton.onClick = [this] { showOptions(); };
+    globalButton.setTooltip ("Global controls: reverb, FFT size, gate timing and knee");
+    globalButton.onClick = [this] { showGlobalPanel(); };
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Dede", helpBody);
     topBar.setRightControls ({ { &presetBar, 210 }, { &presetBrowserButton, 26 },
-                               { &optionsButton, 24 }, { &infoButton, 22 } });
+                               { &globalButton, 24 }, { &infoButton, 22 } });
 
     fxme::SpectrumDisplay::Colours specColours;
     specColours.plotBackground = theme::plotBack;
@@ -132,20 +134,18 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     refreshRegionsFromParameters (true);
     addAndMakeVisible (spectrum);
     addAndMakeVisible (column);
+    addAndMakeVisible (outputMeter);
 
     setUpKnob (dryKnob,      theme::accent);
     setUpKnob (wetKnob,      theme::accent);
     setUpKnob (revLevelKnob, theme::specViolet);
     setUpKnob (outKnob,      theme::accent);
-    setUpKnob (roomKnob,     theme::specViolet);
-    setUpKnob (dampKnob,     theme::specViolet);
-    setUpKnob (widthKnob,    theme::specViolet);
 
     processor.getPresetManager().addChangeListener (this);
     startTimerHz (20);
 
     setResizable (true, true);
-    setResizeLimits (theme::minEditorWidth, 480, 2400, 1600);
+    setResizeLimits (theme::minEditorWidth, 520, 2400, 1600);
     setSize (theme::defaultWidth, theme::defaultHeight);
 }
 
@@ -370,11 +370,11 @@ void DedeAudioProcessorEditor::showPresetBrowser()
                                             this);
 }
 
-void DedeAudioProcessorEditor::showOptions()
+void DedeAudioProcessorEditor::showGlobalPanel()
 {
-    juce::CallOutBox::launchAsynchronously (std::make_unique<OptionsPanel> (processor),
+    juce::CallOutBox::launchAsynchronously (std::make_unique<GlobalPanel> (processor),
                                             getLocalArea (&topBar,
-                                                          optionsButton.getBounds().toFloat())
+                                                          globalButton.getBounds().toFloat())
                                                 .toNearestInt(),
                                             this);
 }
@@ -411,25 +411,24 @@ void DedeAudioProcessorEditor::resized()
 
     area.reduce (theme::margin, theme::margin);
 
-    auto controls = area.removeFromBottom (theme::globalRowHeight);
-    area.removeFromBottom (theme::margin);
-
-    column.setBounds (area.removeFromLeft (theme::regionColumnWidth));
+    // The left column, top to bottom: the region rows, which take whatever
+    // height the knobs and the meter leave, the four level knobs in a 2 x 2
+    // grid, and the output meter at the very bottom.
+    auto left = area.removeFromLeft (theme::regionColumnWidth);
     area.removeFromLeft (theme::margin);
     spectrum.setBounds (area);
 
-    // Four level knobs on the left, the three reverb knobs on the right, and
-    // whatever is left over as a gap.
-    fxme::FxmeSlider* const levels[] { &dryKnob, &wetKnob, &revLevelKnob, &outKnob };
-    fxme::FxmeSlider* const reverb[] { &roomKnob, &dampKnob, &widthKnob };
+    outputMeter.setBounds (left.removeFromBottom (OutputMeter::preferredHeight));
+    left.removeFromBottom (theme::margin);
 
-    const int knobW = juce::jmin (86, controls.getWidth() / 8);
+    auto knobs = left.removeFromBottom (2 * theme::levelKnobHeight);
+    left.removeFromBottom (theme::margin);
+    column.setBounds (left);
 
-    auto leftArea = controls.removeFromLeft (knobW * (int) std::size (levels));
-    for (auto* k : levels)
-        k->setBounds (leftArea.removeFromLeft (knobW).reduced (4));
-
-    auto rightArea = controls.removeFromRight (knobW * (int) std::size (reverb));
-    for (auto* k : reverb)
-        k->setBounds (rightArea.removeFromLeft (knobW).reduced (4));
+    const int knobW = knobs.getWidth() / 2;
+    fxme::FxmeSlider* const grid[] { &dryKnob, &wetKnob, &revLevelKnob, &outKnob };
+    for (int i = 0; i < 4; ++i)
+        grid[i]->setBounds (juce::Rectangle<int> (knobs.getX() + (i % 2) * knobW,
+                                                  knobs.getY() + (i / 2) * theme::levelKnobHeight,
+                                                  knobW, theme::levelKnobHeight).reduced (4));
 }

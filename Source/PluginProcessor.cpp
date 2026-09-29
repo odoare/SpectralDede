@@ -471,6 +471,8 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     wetGain.reset (sampleRate, 0.02);
     revGain.reset (sampleRate, 0.02);
     outGain.reset (sampleRate, 0.02);
+    for (auto& m : outputMeters)
+        m.prepare (sampleRate);
     dryGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));
     wetGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pWetLevel->load()));
     revGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (pRevLevel->load()));
@@ -493,6 +495,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         panR[i].setCurrentAndTargetValue (right);
 
         saturators[i].prepare (sampleRate);
+        satLevel[i].prepare (sampleRate);
         keepFilters[i].prepare (sampleRate);
         keepWasOn[i] = false;
 
@@ -682,6 +685,23 @@ float DedeAudioProcessor::getRegionLevelDb (int slot, int channel) const noexcep
     return meters[slot][channel].getRMS();
 }
 
+float DedeAudioProcessor::getOutputLevelDb (int channel) const noexcept
+{
+    return juce::isPositiveAndBelow (channel, 2) ? outputMeters[channel].getRMS() : -100.0f;
+}
+
+float DedeAudioProcessor::takeOutputPeakDb (int channel) noexcept
+{
+    if (! juce::isPositiveAndBelow (channel, 2))
+        return -100.0f;
+
+    // Reset after reading, so no peak between two GUI frames is missed. A
+    // peak landing between the two calls can be lost; harmless for a meter.
+    const float db = outputMeters[channel].getMax();
+    outputMeters[channel].resetMax();
+    return db;
+}
+
 float DedeAudioProcessor::getGateOpenness (int slot) const noexcept
 {
     return splitter.getGateOpenness (slot);
@@ -741,6 +761,7 @@ void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
         if (! satWasOn[slot])
         {
             sat.reset();
+            satLevel[slot].reset();
             satDrive[slot].setCurrentAndTargetValue (driveGain);
         }
 
@@ -755,13 +776,18 @@ void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
 
         satDrive[slot].setTargetValue (driveGain);
 
-        // Divided back by the drive: unity for small signals, so the drive
-        // sets how hard the band clips rather than how loud it comes out.
+        // The drive sets how hard the band clips, not how loud it comes out.
+        // Dividing back by the drive is right for small signals only: a band
+        // that clips is capped whatever the drive, so the division alone
+        // makes it quieter as the drive goes up. The level matcher brings
+        // the result back to the band's RMS before the saturator, measured
+        // (200 ms followers), which holds at every level.
+        auto& level = satLevel[slot];
         for (int s = 0; s < numSamples; ++s)
         {
             const float g = satDrive[slot].getNextValue();
             sat.setDriveGain (g);
-            x[s] = sat.processSample (x[s]) / g;
+            x[s] = level.process (x[s], sat.processSample (x[s]) / g);
         }
     }
     satWasOn[slot] = satOn;
@@ -1018,6 +1044,10 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int maxChunk = juce::jmax (1, monoBuffer.getNumSamples());
     for (int start = 0; start < n; start += maxChunk)
         processChunk (buffer, start, juce::jmin (maxChunk, n - start));
+
+    // A mono output bus shows on both sides.
+    for (int ch = 0; ch < 2; ++ch)
+        outputMeters[ch].process (buffer.getReadPointer (juce::jmin (ch, numOut - 1)), n);
 }
 
 //==============================================================================

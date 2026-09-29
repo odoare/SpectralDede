@@ -105,7 +105,7 @@ namespace dede::theme
     // Geometry
     inline constexpr int topBarHeight   = 54;
     inline constexpr int margin         = 10;
-    inline constexpr int globalRowHeight = 96;
+    inline constexpr int levelKnobHeight = 80;   // the left column's 2 x 2 level knobs
 
     inline constexpr int regionColumnWidth = 180;
     inline constexpr int minEditorWidth    = 950;   // keeps the spectrum usable beside the column

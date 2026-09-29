@@ -84,6 +84,14 @@ public:
         thread. */
     float getRegionLevelDb (int slot, int channel) const noexcept;
 
+    /** The plugin's output level in dBFS, channel 0 or 1, RMS over 100 ms.
+        For the output meter; any thread. */
+    float getOutputLevelDb (int channel) const noexcept;
+
+    /** The output's highest peak in dBFS since the last call, channel 0 or 1.
+        For the output meter, from one reader (the GUI timer). */
+    float takeOutputPeakDb (int channel) noexcept;
+
     /** How much of a region's energy its gate and ceiling let through, 0 to 1
         (see fxme::SpectralBandSplitter::getGateOpenness). Any thread. */
     float getGateOpenness (int slot) const noexcept;
@@ -240,6 +248,7 @@ private:
     fxme::BitCrusher  crushers[dede::maxRegions];
     fxme::Downsampler downsamplers[dede::maxRegions];
     juce::SmoothedValue<float> satDrive[dede::maxRegions];
+    fxme::LevelMatcher satLevel[dede::maxRegions];   // the saturator's auto-gain
     bool satWasOn[dede::maxRegions] {};
     bool dsWasOn[dede::maxRegions] {};
 
@@ -257,6 +266,9 @@ private:
     /** Each region's output level (L, R), before the solo gain, for the
         region column. */
     fxme::VuMeter meters[dede::maxRegions][2];
+
+    /** The plugin's output (L, R), after the output trim. */
+    fxme::VuMeter outputMeters[2];
     fxme::Reverb reverb;
 
     /** The dry path is delayed by the splitter's latency so it stays lined up

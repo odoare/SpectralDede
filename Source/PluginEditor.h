@@ -2,10 +2,11 @@
   ------------------------------------------------------------------------------
     PluginEditor.h
 
-    Dede's window: a top bar carrying the preset strip, the options (gear) and
-    help buttons, the
-    spectrum view where the regions are drawn (the whole point of the plugin),
-    and one row of global controls along the bottom.
+    Dede's window: a top bar carrying the preset strip, the global controls
+    (gear) and help buttons; the spectrum view where the regions are drawn
+    (the whole point of the plugin); and on its left a column with one row per
+    region, the four levels (dry, delays, reverb return, output) and the
+    output meter.
 
     Author: Olivier Doaré, github.com/odoare
     (c) 2026 Olivier Doaré
@@ -19,7 +20,8 @@
 #include "PluginProcessor.h"
 #include "Theme.h"
 #include "RegionColumn.h"
-#include "OptionsPanel.h"
+#include "GlobalPanel.h"
+#include "OutputMeter.h"
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -72,9 +74,9 @@ private:
         live here. */
     void showPresetBrowser();
 
-    /** Opens the options (engine and gate settings) in a callout under the
-        gear button. */
-    void showOptions();
+    /** Opens the global controls (reverb, engine, gate) in a callout under
+        the gear button. */
+    void showGlobalPanel();
 
     DedeAudioProcessor& processor;
     fxme::FxmeLookAndFeel laf;
@@ -88,25 +90,23 @@ private:
     /** One row per region slot, left of the spectrum: free, on, solo,
         keep in band, and the gate and level meters. */
     RegionColumn column { processor };
+    OutputMeter outputMeter { processor };
 
     /** The region popup's tab last shown, so the next one opens on it. Per
         editor session, not saved. The popup is a child of this editor, so the
         reference it keeps never outlives this. */
     int lastRegionTab = 0;
 
-    // Global controls: levels on the left, the shared reverb on the right.
-    // The gate's knee and timing are in the options callout.
+    // The four levels, under the region rows. The reverb's other controls,
+    // the engine and the gate are in the global controls callout.
     fxme::FxmeSlider dryKnob      { processor.getAPVTS(), dede::ids::dryLevel, "Dry",     dede::theme::accent };
     fxme::FxmeSlider wetKnob      { processor.getAPVTS(), dede::ids::wetLevel, "Delays",  dede::theme::accent };
     fxme::FxmeSlider revLevelKnob { processor.getAPVTS(), dede::ids::revLevel, "Reverb",  dede::theme::specViolet };
     fxme::FxmeSlider outKnob      { processor.getAPVTS(), dede::ids::outLevel, "Output",  dede::theme::accent };
-    fxme::FxmeSlider roomKnob     { processor.getAPVTS(), dede::ids::revRoom,  "Room",    dede::theme::specViolet };
-    fxme::FxmeSlider dampKnob     { processor.getAPVTS(), dede::ids::revDamp,  "Damping", dede::theme::specViolet };
-    fxme::FxmeSlider widthKnob    { processor.getAPVTS(), dede::ids::revWidth, "Width",   dede::theme::specViolet };
 
     fxme::PresetBarComponent presetBar { processor.getPresetManager() };
     juce::TextButton presetBrowserButton { "..." };
-    GearButton optionsButton;
+    GearButton globalButton;
     fxme::InfoButton infoButton;
 
     // The column's one-letter buttons rely on their tooltips. Declared after

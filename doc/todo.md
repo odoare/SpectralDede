@@ -12,7 +12,7 @@ Of the feature items (second half of this file), 16b lives in Dede's
 `fxme::StereoCrossDelay`, `fxme::SpectrumRegionEditor`, or a new core class),
 with the same rules as above.
 
-The options window (item 16, done, with the FFT size of item 6 and the gate
+The global controls callout (item 16, done, `GlobalPanel`, with the FFT size of item 6 and the gate
 timing of item 7) is where 16b (smoothing times) and 17 (the engine mode) add
 their controls.
 
@@ -102,12 +102,12 @@ use a longer window (80 to 100 ms) for octaves, and judge by ear.
 4. `fxme::PitchShifter` smooths its ratio internally, so the interval can be
    moved without zipper noise.
 
-### 16b. Smoothing times in the options window
+### 16b. Smoothing times in the global controls
 
 *Not mandatory. What item 16 (done) left out.*
 
 The glide times that are hard-coded today, one parameter each in a
-"Smoothing" section of `OptionsPanel`, with today's values as defaults so
+"Smoothing" section of `GlobalPanel`, with today's values as defaults so
 nothing changes:
 
 - region gain and pan glide, 20 ms (`SpectralBandSplitter::setLevelSmoothingSeconds`,
@@ -126,7 +126,7 @@ earn a control. Re-save the factory presets.
 ### 17. Live engine (filter bank, zero latency)
 
 *Not mandatory. Planned. A second engine beside the spectral one, chosen in
-the options window (item 16, done: add a mode combo to its Engine section,
+the global controls (item 16, done, `GlobalPanel`: add a mode combo to its Engine section,
 grey the FFT size in Live, and add a line to the read-out saying what the
 mode gives up); the spectral engine stays the default.*
 

@@ -1,10 +1,12 @@
 /*
   ------------------------------------------------------------------------------
-    OptionsPanel.h
+    GlobalPanel.h
 
-    The settings that shape how Dede works rather than what a region does,
-    shown in a callout from the gear button in the top bar:
+    The global controls that are set once rather than played, shown in a
+    callout from the gear button in the top bar:
 
+      - Reverb: room, damping and width of the shared reverb (its return
+        level is with the other levels, in the left column).
       - Engine: the splitter's FFT size, with what it comes to (latency, bin
         width, and the step at which the gates move).
       - Gate: attack, release and knee, shared by every region.
@@ -28,12 +30,12 @@
 #include "Theme.h"
 
 //==============================================================================
-class OptionsPanel : public juce::Component,
-                     private juce::Timer
+class GlobalPanel : public juce::Component,
+                    private juce::Timer
 {
 public:
-    explicit OptionsPanel (DedeAudioProcessor& processor);
-    ~OptionsPanel() override;
+    explicit GlobalPanel (DedeAudioProcessor& processor);
+    ~GlobalPanel() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -49,6 +51,8 @@ private:
 
     DedeAudioProcessor& processor;
 
+    fxme::FxmeSlider roomKnob, dampKnob, widthKnob;
+
     juce::ComboBox fftSizeBox;
     std::unique_ptr<ComboBoxAttachment> fftSizeAttachment;
 
@@ -56,9 +60,9 @@ private:
     fxme::InfoButton infoButton;
 
     juce::StringArray readout;
-    juce::Rectangle<int> engineHeading, fftLabel, readoutArea, gateHeading, titleArea;
+    juce::Rectangle<int> titleArea, reverbHeading, engineHeading, fftLabel, readoutArea, gateHeading;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OptionsPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalPanel)
 };
 
 //==============================================================================
@@ -66,7 +70,7 @@ private:
 class GearButton : public juce::Button
 {
 public:
-    GearButton() : juce::Button ("options") {}
+    GearButton() : juce::Button ("global") {}
 
     void paintButton (juce::Graphics&, bool over, bool down) override;
 

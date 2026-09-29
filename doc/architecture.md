@@ -52,9 +52,13 @@ Each region leaves the splitter mono, with its gain applied but not its pan
 bit-crush, then downsample, each with its own switch and skipped when off),
 and only then is panned, constant power, before its delay. Panning after the
 degrade chain keeps a saturator from driving the louder side of a panned
-region harder. The saturator's output is divided by its drive (unity for
-small signals), so the drive knob sets how hard the band clips, not how loud
-it comes out; its bias and sag are fixed per model (sag 0.5 except Standard,
+region harder. The drive knob sets how hard the band clips, not how loud it
+comes out: the saturator's output is divided by its drive (unity for small
+signals, instantly), then an `fxme::LevelMatcher` brings it back to the
+band's RMS before the saturator (200 ms followers). The division alone is
+not enough: a band that clips is capped whatever the drive, so it would get
+quieter as the drive rises (26 dB quieter at 36 dB of drive on a loud tone).
+The saturator's bias and sag are fixed per model (sag 0.5 except Standard,
 Class AB with a -0.1 overlap for its crossover notch).
 
 The degrade chain spreads energy outside the region (harmonics from the
@@ -224,6 +228,15 @@ Dede's own `Source/`:
 
 ## The editor and the parameters
 
+Layout. A top bar (preset strip, preset browser, the gear that opens the
+global controls, help); the spectrum view; and on its left a column holding
+one row per region slot (`RegionColumn`), the four levels in a 2 x 2 grid
+(Dry, Delays, Reverb return, Output), and the output meter (`OutputMeter`,
+RMS over 100 ms plus a peak marker, from `getOutputLevelDb` and
+`takeOutputPeakDb`). What is set once rather than played is in the global
+controls callout (`GlobalPanel`): the reverb's room, damping and width, the
+FFT size, and the gate's attack, release and knee.
+
 The region editor never holds a value of its own. Every gesture calls back into
 `PluginEditor`, which writes to the APVTS through
 `setValueNotifyingHost`, and a 20 Hz timer reads the parameters back and pushes
@@ -247,8 +260,9 @@ scheme is part of the saved state, so slots are never renumbered and suffixes
 never renamed.
 
 Global: `dryLevel`, `wetLevel` (the summed delays), `outLevel`, the shared
-reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel`. In the options window
-(the gear in the top bar, `OptionsPanel`): `fftSize` (choice, 1024 to 16384
+reverb's `revRoom`, `revDamp`, `revWidth`, `revLevel` (the first three in the
+global controls callout, `GlobalPanel`, opened from the gear in the top bar).
+Also in that callout: `fftSize` (choice, 1024 to 16384
 points, not automatable), `gateKnee` (dB, the width of the transition around
 every gate and ceiling line; 0 is a hard switch), `gateAtk` and `gateRel` (ms,
 the splitter's per-bin attack and release, applied once per hop). Presets
