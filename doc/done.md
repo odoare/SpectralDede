@@ -4,6 +4,59 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## 17. Live engine: filter bank, zero latency (2026-09-29)
+
+A second engine beside the spectral one, chosen in the global controls
+(`engine`: Spectral, the default, or Live; not automatable). Live cuts the
+regions with filters: no latency, transients intact, gates that act on each
+whole band, per sample. See `architecture.md`, "Two engines", for the table
+of what each gives up.
+
+- **FxmeTools core.** `fxme::BandGate` (new): gate and ceiling on a signal's
+  level, with the spectral gate's knee and attack/release, and levels in the
+  spectrum trace's convention for a steady tone (a sine of amplitude A reads
+  A/2), so a region's lines mean the same in both engines for tonal
+  material. Its detector averages the squared band over about a period of
+  its lowest frequency (3 to 50 ms). `fxme::FilterBankSplitter` (new): the
+  spectral splitter's API (same `SpectralBand` settings, `setApplyPan`,
+  `getBandOutput`, `getGateOpenness`), with `EdgeBandPass` then `BandGate`
+  per band, latency 0, plus `getBandLevelDb`. Core tests
+  (`CoreFilterBankTests`): level convention, gate, ceiling, knee, attack and
+  release times, each band equal to `EdgeBandPass` alone sample for sample,
+  zero latency, openness and level.
+- **The level marker.** In Live the gates compare the band's whole level,
+  which reads above the trace for anything noisy. The view then shows each
+  region's band level as a shaded column topped by a solid line
+  (`SpectrumRegionEditor::setLevelMarkersEnabled`, `setRegionLevel`, opt-in,
+  FxmeTools), so the lines are set against what they are compared to.
+- **Switching** follows the FFT size's path (`handleAsyncUpdate`, processing
+  suspended): `configureEngine()` prepares the engine switched to, sets the
+  dry delay to its latency (none in Live, and the dry path then skips the
+  delay line altogether) and reports it, and every region is reset, delay
+  tails included. Only the active engine runs. An FFT size change in Live is
+  applied when switching back.
+- **GUI.** Engine combo in the global controls, the FFT size greyed in Live,
+  the read-out saying what Live gives up, the help text on both engines; the
+  region popup's Spectral tab dimmed in Live and titled "Spectral (off in
+  Live)".
+- **Presets.** `engine` at Spectral in the factory presets (268 parameters).
+- **CPU.** Measured about equal to the spectral engine (about 1 % of a core
+  for 8 regions), not the 5 to 10 times less the plan guessed: the spectral
+  splitter got much cheaper since (items 1 to 4), and four biquads per band
+  per sample are most of the live cost. SIMD across the bands is item 18.
+- **Not done, on purpose:** the mixed mode (the spectral engine with the
+  latency taken off the delay lines instead of added to the dry), dropped
+  from the plan.
+
+## Top bar: logo and glowing hairline (2026-09-29)
+
+The FX-Mechanics logo (`Source/Assets/logo686.png`) is on the left of the top
+bar, through `fxme::TopBar`'s logo argument. The cyan hairline under the bar
+glows: the editor's `paintOverChildren` draws a soft accent gradient a few
+pixels either side of it and redraws the line brighter. The asset glob in
+`CMakeLists.txt` is now `CONFIGURE_DEPENDS`, so an image added to
+`Source/Assets` is picked up without a manual reconfigure.
+
 ## Layout: left column with the levels and an output meter; global controls (2026-09-29)
 
 - **The bottom row is gone**, and the spectrum view takes the full height.

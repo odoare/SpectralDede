@@ -60,6 +60,7 @@ namespace ids
     inline constexpr const char* gateAttack = "gateAtk";      // ms, a bin opening
     inline constexpr const char* gateRelease = "gateRel";     // ms, a bin closing
     inline constexpr const char* fftSize    = "fftSize";      // choice, see fftSizeNames
+    inline constexpr const char* engine     = "engine";       // choice, see engineNames
 
     // Per-region suffixes (see the file header for the naming scheme).
     inline constexpr const char* rgOn    = "on";      // region slot in use
@@ -176,6 +177,12 @@ inline constexpr int splitterFftOrder = 11;
 
 /** The `fftSize` choice: 1024 to 16384 points (orders 10 to 14, what both the
     splitter and the spectrum view accept). */
+/** The `engine` choice. Spectral: the STFT splitter (per-bin gates,
+    spectral effects, one window of latency). Live: a filter bank (per-band
+    gates, soft edges, no spectral effects, no latency). */
+inline const juce::StringArray engineNames { "Spectral", "Live" };
+inline constexpr int liveEngineIndex = 1;
+
 inline const juce::StringArray fftSizeNames { "1024", "2048", "4096", "8192", "16384" };
 inline constexpr int minChoiceFftOrder = 10;
 inline constexpr int defaultFftSizeIndex = splitterFftOrder - minChoiceFftOrder;

@@ -33,6 +33,7 @@ public:
     ~DedeAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -82,7 +83,10 @@ private:
     fxme::FxmeLookAndFeel laf;
 
     fxme::TopBar topBar { "Dede", "spectral multi-delay and reverb",
-                          JucePlugin_VersionString, juce::Image() };
+                          JucePlugin_VersionString, logoImage() };
+
+    /** The FX-Mechanics logo, from the binary data (empty without it). */
+    static juce::Image logoImage();
 
     fxme::SpectrumRegionEditor spectrum;
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];

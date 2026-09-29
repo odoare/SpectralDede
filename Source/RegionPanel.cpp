@@ -171,6 +171,7 @@ private:
     stage that is off are dimmed but stay editable, so a stage can be set up
     before it is heard. Both the Degrade and the Spectral tabs are one. */
 class RegionPanel::StagesPage : public juce::Component,
+                                public juce::SettableTooltipClient,
                                 private juce::Timer
 {
 public:
@@ -229,6 +230,11 @@ public:
         updateIdleStages();
         startTimerHz (10);
     }
+
+    /** When set and true, the whole page is dimmed: its stages have no
+        effect in the current engine (the Spectral tab in the Live engine).
+        The controls stay editable, for when the engine comes back. */
+    std::function<bool()> isUnavailable;
 
     void paint (juce::Graphics& g) override
     {
@@ -289,9 +295,14 @@ private:
 
     void timerCallback() override { updateIdleStages(); }
 
-    /** Dims the controls of every stage that is switched off. */
+    /** Dims the controls of every stage that is switched off, and the whole
+        page when it is unavailable. */
     void updateIdleStages()
     {
+        const float pageAlpha = isUnavailable != nullptr && isUnavailable() ? idleAlpha : 1.0f;
+        if (getAlpha() != pageAlpha)
+            setAlpha (pageAlpha);
+
         for (auto& stage : stages)
         {
             const float alpha = parameterValue (processor, slot, stage->onSuffix) > 0.5f ? 1.0f
@@ -375,7 +386,14 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     };
 
     tabs->addTab ("Degrade",  theme::panel, new StagesPage (processor, slot, accent, degrade), true);
-    tabs->addTab ("Spectral", theme::panel, new StagesPage (processor, slot, accent, spectralStages), true);
+    // Pitch, freeze and blur need the FFT: in the Live engine the tab is
+    // dimmed and says so, its settings kept for when the engine comes back.
+    auto* spectralPage = new StagesPage (processor, slot, accent, spectralStages);
+    spectralPage->isUnavailable = [&processor] { return processor.isLiveEngine(); };
+    spectralPage->setTooltip ("Pitch, freeze and blur work on the FFT: they have no "
+                              "effect in the Live engine");
+    tabs->addTab (processor.isLiveEngine() ? "Spectral (off in Live)" : "Spectral",
+                  theme::panel, spectralPage, true);
 
     tabs->setCurrentTabIndex (juce::jlimit (0, tabs->getNumTabs() - 1, wanted));
     tabs->tracking = true;

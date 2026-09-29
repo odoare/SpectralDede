@@ -171,6 +171,47 @@ The spectrum display's badges for these are locked (drawn dimmed). If the
 trace is too jumpy to read, the honest cure is to smooth the gate's own
 detector and the view with it (todo item 8), not the picture alone.
 
+## Two engines: Spectral and Live
+
+The `engine` parameter (global controls, not automatable) picks what cuts the
+regions out of the input. **Spectral** (the default) is the splitter above.
+**Live** is `fxme::FilterBankSplitter`: per region an `fxme::EdgeBandPass`
+(4th-order Butterworth each side, 24 dB per octave) on the mono input, then an
+`fxme::BandGate` on the band's level, then its gain. Everything after the band
+(degrade, keep in band, pan, Dry, delay, send, solo, meters) is shared and
+does not know which engine fed it.
+
+| | Spectral (default) | Live |
+|---|---|---|
+| Latency | one FFT window (43 ms at 2048) | none |
+| CPU, 8 regions | about 1 % of a core at 2048 points | about the same (the filters are most of it) |
+| Gate and ceiling | per frequency bin: keep only the peaks of a band, or only its floor | per band: the whole band opens or closes (a multiband gate), per sample |
+| Region edges | near brick-wall | 24 dB per octave: neighbours overlap, narrow regions lose level (about 2 dB at half an octave) |
+| Transients | softened by the window (pre-echo) | intact |
+| Spectral tab (pitch, freeze, blur) | yes | no effect (the tab is dimmed and says so) |
+| Region Dry added to the global dry | phase-aligned, clean | phase shifts near the edges colour the sum there a little |
+
+**Levels.** A band gate compares the band's level in the same convention as
+the spectrum trace for a steady tone (a sine of amplitude A reads A/2, what
+its centre bin reads through the Hann window), so a region's gate and ceiling
+mean the same thing in both engines for tonal material. For anything
+noise-like, a band's level sums all its bins and sits above the trace. So in
+Live the view shows each region's band level (`getBandLevelDb`) as a shaded
+column topped by a solid line (`SpectrumRegionEditor::setLevelMarkersEnabled`),
+and the gate and ceiling are set against that. The detector averages the
+squared band over about one period of its lowest frequency (3 to 50 ms), so a
+low band does not ripple through its gate.
+
+**Switching** takes the path of the FFT size: the parameter listener schedules
+`handleAsyncUpdate()`, which suspends processing, calls `configureEngine()`
+(prepares the engine switched to, sets the dry delay to its latency, reports
+it with `setLatencySamples`) and resets every region, delay tails included,
+since they were lined up with the other engine's timing. Only the active
+engine is prepared, fed and read. An FFT size change while in Live is only
+recorded; it is applied when switching back. The Region Dry colouring near the
+edges in Live has no cheap cure: an all-pass on the global dry cannot match
+eight overlapping arbitrary bands.
+
 ## Where code lives
 
 Anything not specific to Dede goes into the `lib/FxmeTools` submodule under

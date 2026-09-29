@@ -33,6 +33,18 @@ namespace
         "Width its stereo spread. Its return level is the Reverb knob in the "
         "left column.\n\n"
         "Engine\n"
+        "Spectral (the default) cuts the regions out of a short-time Fourier "
+        "transform: near brick-wall edges, gates that decide bin by bin (a "
+        "region can keep only its peaks, or only its floor), and the spectral "
+        "effects. It costs one FFT window of latency.\n"
+        "Live cuts them with filters (24 dB per octave each side) instead: no "
+        "latency, sharp transients, less CPU, for playing live. The gate and "
+        "ceiling then open and close the whole band, on its overall level, "
+        "shown as a shaded column in each region; neighbouring regions "
+        "overlap near their edges, narrow ones lose a little level, a region's "
+        "Dry colours the sound a little near its edges, and the Spectral tab "
+        "(pitch, freeze, blur) has no effect. Switching resets every region "
+        "(delay tails included) and changes the latency.\n\n"
         "The FFT size is the window of the spectral splitter: the regions, "
         "their gates and ceilings, and the spectral effects all work on it, "
         "and the spectrum view measures with it.\n"
@@ -50,9 +62,10 @@ namespace
         "and stop the gate from warbling on noisy material.\n"
         "  Knee: at 0 a bin is passed or cut outright; wider, it fades in and "
         "out across that many dB around each line.\n"
-        "The gates move once per hop, a quarter of the window (the gate step "
-        "shown under the FFT size), so an attack shorter than that is "
-        "effectively instant.";
+        "In the Spectral engine the gates move once per hop, a quarter of the "
+        "window (the gate step shown under the FFT size), so an attack shorter "
+        "than that is effectively instant. In the Live engine they move every "
+        "sample, so every attack time is meaningful.";
 
     void setUpKnob (juce::Component& parent, fxme::FxmeSlider& knob, juce::Colour accent)
     {
@@ -85,6 +98,12 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     for (auto* k : { &roomKnob, &dampKnob, &widthKnob })
         setUpKnob (*this, *k, theme::specViolet);
 
+    engineBox.addItemList (engineNames, 1);
+    theme::styleCombo (engineBox, theme::accent);
+    addAndMakeVisible (engineBox);
+    engineAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
+                                                             ids::engine, engineBox);
+
     fftSizeBox.addItemList (fftSizeNames, 1);
     theme::styleCombo (fftSizeBox, theme::accent);
     addAndMakeVisible (fftSizeBox);
@@ -99,12 +118,13 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     addAndMakeVisible (infoButton);
 
     readout = engineText();
+    timerCallback();
     startTimerHz (10);
 
     const int width  = knobsPerRow * knobWidth + 2 * panelMargin;
     const int height = panelMargin + titleHeight + sectionGap
                      + headingHeight + knobHeight + sectionGap
-                     + headingHeight + rowHeight + 2 * readoutLine + sectionGap
+                     + headingHeight + 2 * rowHeight + 2 * readoutLine + sectionGap
                      + headingHeight + knobHeight + panelMargin;
     setSize (width, height);
 }
@@ -114,6 +134,10 @@ GlobalPanel::~GlobalPanel() = default;
 //==============================================================================
 juce::StringArray GlobalPanel::engineText() const
 {
+    if (processor.isLiveEngine())
+        return { "No latency; gates act on each whole band",
+                 "Soft edges, no spectral effects" };
+
     const double sr = processor.getSampleRate() > 0.0 ? processor.getSampleRate() : 48000.0;
     const int size  = 1 << processor.getFftOrder();
     const auto ms   = [sr] (int samples) { return juce::String (1000.0 * samples / sr, 1) + " ms"; };
@@ -124,6 +148,15 @@ juce::StringArray GlobalPanel::engineText() const
 
 void GlobalPanel::timerCallback()
 {
+    // The FFT size only means something to the spectral engine.
+    const bool live = processor.isLiveEngine();
+    if (fftSizeBox.isEnabled() == live)
+    {
+        fftSizeBox.setEnabled (! live);
+        fftSizeBox.setAlpha (live ? 0.45f : 1.0f);
+        repaint (fftLabel);
+    }
+
     const auto text = engineText();
     if (text == readout)
         return;
@@ -150,7 +183,10 @@ void GlobalPanel::paint (juce::Graphics& g)
 
     g.setColour (theme::dimText);
     g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    g.drawText ("Engine", engineLabel, juce::Justification::centredLeft);
+    g.setColour (theme::dimText.withAlpha (fftSizeBox.isEnabled() ? 1.0f : 0.45f));
     g.drawText ("FFT size", fftLabel, juce::Justification::centredLeft);
+    g.setColour (theme::dimText);
 
     g.setFont (juce::Font (juce::FontOptions (11.0f)));
     auto lines = readoutArea;
@@ -179,6 +215,9 @@ void GlobalPanel::resized()
 
     engineHeading = area.removeFromTop (headingHeight);
     auto row = area.removeFromTop (rowHeight);
+    engineLabel = row.removeFromLeft (70);
+    engineBox.setBounds (row.removeFromLeft (100).withSizeKeepingCentre (100, 20));
+    row = area.removeFromTop (rowHeight);
     fftLabel = row.removeFromLeft (70);
     fftSizeBox.setBounds (row.removeFromLeft (100).withSizeKeepingCentre (100, 20));
     readoutArea = area.removeFromTop (2 * readoutLine);

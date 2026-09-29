@@ -53,14 +53,16 @@ namespace
         "  wheel zooms the level axis, ctrl+wheel the frequency axis\n"
         "  alt+drag or middle-drag pans, double-click resets\n"
         "  the view measures exactly as the gates do (same window size, peak\n"
-        "    detector, no averaging), so a trace over a gate line passes it\n\n"
+        "    detector, no averaging), so a trace over a gate line passes it\n"
+        "  in the Live engine the gates compare each band's whole level instead:\n"
+        "    it shows as a shaded column in each region, topped by a solid line\n\n"
         "Under the region rows: the levels of the dry signal, the summed "
         "delays, the reverb return and the output trim, then the output meter "
         "(RMS bars, peak markers held for a second, red over 0 dBFS).\n\n"
         "The gear button opens the global controls: the shared reverb (room, "
-        "damping, width), the FFT size (resolution against latency) and the "
-        "gate's attack, release and knee, shared by every region. Its own help "
-        "button explains each.";
+        "damping, width), the engine (Spectral, or Live for zero latency) and "
+        "its FFT size, and the gate's attack, release and knee, shared by every "
+        "region. Its own help button explains each.";
 }
 
 //==============================================================================
@@ -389,6 +391,15 @@ void DedeAudioProcessorEditor::timerCallback()
     const int order = processor.getFftOrder();
     if (order != spectrum.getFftOrder())
         spectrum.setFftOrder (order);
+
+    // The live engine's gates compare each band's level, which sums every
+    // bin of the band and so sits above the trace for anything noisy: show it
+    // in each region, so the lines are set against what they are compared to.
+    const bool live = processor.isLiveEngine();
+    spectrum.setLevelMarkersEnabled (live);
+    if (live)
+        for (int i = 0; i < maxRegions; ++i)
+            spectrum.setRegionLevel (i, processor.getBandLevelDb (i));
 }
 
 void DedeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -399,9 +410,40 @@ void DedeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     repaint();
 }
 
+juce::Image DedeAudioProcessorEditor::logoImage()
+{
+   #if DEDE_HAS_BINARY_DATA
+    return juce::ImageCache::getFromMemory (BinaryData::logo686_png, BinaryData::logo686_pngSize);
+   #else
+    return {};
+   #endif
+}
+
 void DedeAudioProcessorEditor::paint (juce::Graphics& g)
 {
     theme::paintBackground (g, getLocalBounds().toFloat());
+}
+
+void DedeAudioProcessorEditor::paintOverChildren (juce::Graphics& g)
+{
+    // A soft glow around the top bar's accent hairline: over the children, so
+    // it spills a little into the bar above the line and into the margin
+    // below it, and a brighter line on top. The margin below is empty, so
+    // nothing is covered but background.
+    const float lineY = (float) topBar.getBottom() - 1.5f;
+    const float width = (float) getWidth();
+    constexpr float above = 5.0f, below = 9.0f;
+
+    g.setGradientFill (juce::ColourGradient (theme::accent.withAlpha (0.0f), 0.0f, lineY - above,
+                                             theme::accent.withAlpha (0.22f), 0.0f, lineY, false));
+    g.fillRect (juce::Rectangle<float> (0.0f, lineY - above, width, above));
+
+    g.setGradientFill (juce::ColourGradient (theme::accent.withAlpha (0.30f), 0.0f, lineY + 1.5f,
+                                             theme::accent.withAlpha (0.0f), 0.0f, lineY + 1.5f + below, false));
+    g.fillRect (juce::Rectangle<float> (0.0f, lineY + 1.5f, width, below));
+
+    g.setColour (theme::accent.withAlpha (0.9f));
+    g.fillRect (juce::Rectangle<float> (0.0f, lineY, width, 1.5f));
 }
 
 void DedeAudioProcessorEditor::resized()

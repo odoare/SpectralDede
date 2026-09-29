@@ -87,7 +87,8 @@ target_include_directories(Dede PRIVATE ${DEDE_INCLUDE_DIRS})
 # and ignores the rest, so images and presets can share one binary-data blob.
 # DEDE_HAS_BINARY_DATA lets the processor fall back to a user-presets-only
 # manager while the Assets folder is still empty.
-file(GLOB DEDE_ASSETS ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.png
+file(GLOB DEDE_ASSETS CONFIGURE_DEPENDS
+                      ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.png
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.jpg
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.xml)
 if(DEDE_ASSETS)

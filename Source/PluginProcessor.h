@@ -79,6 +79,14 @@ public:
         applied). The spectrum view follows it; any thread. */
     int getFftOrder() const noexcept                         { return activeFftOrder.load(); }
 
+    /** True while the live (filter bank) engine runs. Any thread. */
+    bool isLiveEngine() const noexcept                       { return liveEngine.load(); }
+
+    /** A region's band level in dB as its live gate compares it (see
+        fxme::BandGate), for the view's level markers; -200 in the spectral
+        engine, whose gates compare the trace itself. Any thread. */
+    float getBandLevelDb (int slot) const noexcept;
+
     /** A region's output level in dBFS (RMS over 100 ms), channel 0 or 1,
         measured before the solo gain. For the region column's meters; any
         thread. */
@@ -144,11 +152,24 @@ private:
     void cacheParameterPointers();
 
     //==========================================================================
-    // FFT size. The parameter is read by prepareToPlay, and a change while
-    // running is applied on the message thread (it re-allocates).
+    // Engine and FFT size. Both parameters are read by prepareToPlay, and a
+    // change while running is applied on the message thread (it
+    // re-allocates and changes the latency).
 
     /** The FFT order the `fftSize` parameter asks for. */
     int requestedFftOrder() const;
+
+    /** Whether the `engine` parameter asks for the live (filter bank) one. */
+    bool requestedLiveEngine() const;
+
+    /** Prepares the engine asked for (with configureSpectralEngine for the
+        spectral one) and reports the latency; resets every region too when
+        switching while running. Message thread, with processing suspended or
+        not yet started. */
+    void configureEngine (bool live, int order, bool resetRegions);
+
+    /** Delays the dry path by `latency` samples and reports it to the host. */
+    void setDryLatency (int latency);
 
     /** (Re)prepares everything sized by the FFT: the splitter, the spectral
         effects, the dry path's delay, and the reported latency. Message
@@ -159,6 +180,8 @@ private:
     void handleAsyncUpdate() override;
 
     std::atomic<int> activeFftOrder { dede::splitterFftOrder };
+    std::atomic<bool> liveEngine { false };
+    int dryLatency = 0;
     int preparedBlockSize = 0;
 
     /** Pulls tempo from the host and the last note number out of the MIDI
@@ -180,6 +203,7 @@ private:
     std::atomic<float>* pGateAttack  = nullptr;
     std::atomic<float>* pGateRelease = nullptr;
     std::atomic<float>* pFftSize  = nullptr;
+    std::atomic<float>* pEngine   = nullptr;
 
     /** Mono-sums the input into monoBuffer: what the spectrum view shows and
         what the band splitter is fed are then one and the same signal, which
@@ -240,6 +264,10 @@ private:
     /** Pitch, freeze and blur, run by the splitter inside its frames (it is
         installed as the splitter's band processor in the constructor). */
     fxme::SpectralBandEffects spectral;
+
+    /** The live engine: the same bands cut by filters, no latency. Only the
+        active one of the two splitters is prepared, fed and read. */
+    fxme::FilterBankSplitter filterBank;
     fxme::StereoCrossDelay delays[dede::maxRegions];
 
     // Degrade chain, one set per region. The band is mono at that point (the

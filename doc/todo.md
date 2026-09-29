@@ -12,9 +12,9 @@ Of the feature items (second half of this file), 16b lives in Dede's
 `fxme::StereoCrossDelay`, `fxme::SpectrumRegionEditor`, or a new core class),
 with the same rules as above.
 
-The global controls callout (item 16, done, `GlobalPanel`, with the FFT size of item 6 and the gate
-timing of item 7) is where 16b (smoothing times) and 17 (the engine mode) add
-their controls.
+The global controls callout (item 16, done, `GlobalPanel`, with the engine of
+item 17, the FFT size of item 6 and the gate timing of item 7) is where 16b
+(smoothing times) adds its controls.
 
 **Parameters and saved state.** Items 6, 7, 9, 12, 13, 14 and 15 add
 parameters. Dede has not been released, so there is no state migration to
@@ -50,6 +50,22 @@ worst block, not the average. Staggering the regions (rendering region `b` at
 its own offset within the hop, with the latency adjusted to match) would even
 this out. More invasive than the items above; only worth it if dropouts show
 up at small buffer sizes while the average load looks fine.
+
+### 18. SIMD across the live engine's bands
+
+*Not mandatory. Expected gain: the live engine's filters several times
+cheaper.*
+
+The live engine (item 17, done) costs about as much as the spectral one,
+about 1 % of a core for 8 regions, and its filters are most of it: four
+biquads per band, each run over the block one after the other, so every
+sample waits on the previous one's result. The 8 bands are independent and
+run the same structure, so they fit SIMD lanes: one 8-wide (AVX) or two
+4-wide (SSE, NEON) transposed-direct-form biquads per stage, the four stages
+in one pass per sample. Needs a band-parallel filter in FxmeTools core (the
+coefficients and states as lane arrays, with a scalar fallback), fed by
+`FilterBankSplitter`, whose outputs stay one buffer per band. Check it
+against `EdgeBandPass` alone, sample for sample, as the current test does.
 
 ## Features
 
@@ -122,82 +138,6 @@ nothing changes:
 
 Keep the list short: a smoothing nobody will ever want to change does not
 earn a control. Re-save the factory presets.
-
-### 17. Live engine (filter bank, zero latency)
-
-*Not mandatory. Planned. A second engine beside the spectral one, chosen in
-the global controls (item 16, done, `GlobalPanel`: add a mode combo to its Engine section,
-grey the FFT size in Live, and add a line to the read-out saying what the
-mode gives up); the spectral engine stays the default.*
-
-The spectral engine (the STFT splitter) costs one FFT window of latency, 43 ms
-at 2048 points. The live engine cuts the regions with filters instead:
-`fxme::EdgeBandPass` (24 dB per octave each side, already in core) per region,
-no FFT at all, so **zero latency** and much less CPU, for playing live. It
-gives things up, and the plugin should say so where the mode is chosen:
-
-| | Spectral (default) | Live |
-|---|---|---|
-| Latency | one FFT window (43 ms at 2048) | none |
-| CPU | 1 FFT + 1 inverse per region per hop | 4 biquads + a gate per region per sample (roughly 5 to 10 times less, to be measured) |
-| Gate and ceiling | per frequency bin: keep only the peaks of a band, or only its floor | per band: the whole band opens or closes (a multiband gate) |
-| Region edges | near brick-wall | 24 dB per octave: neighbours bleed, narrow regions lose level (about 2 dB at half an octave) |
-| Transients | softened by the window (pre-echo) | intact |
-| Spectral tab (pitch, freeze, blur) | yes | no (needs the FFT); greyed out with a note |
-| Region Dry added to the global dry | phase-aligned, clean | phase shifts near the edges: some colouring where the region's edges are |
-
-1. **Core: `fxme::FilterBankSplitter`** (new, FxmeTools core), the live twin
-   of `SpectralBandSplitter`, with the same outward API so Dede can switch
-   between them with little code: `prepare`, `setBand (SpectralBand)` (same
-   struct: edges, gate, ceiling, gain, pan), `setGateKnee`, `setGateTimes`,
-   `setApplyPan`, `process (mono, n)`, `getBandOutput`, `getGateOpenness`,
-   `getLatencySamples()` returning 0. Per band: an `EdgeBandPass` on the input,
-   then a band gate, then gain (and pan when applied). Consider a small
-   interface both splitters implement (`fxme::BandSplitter`), so the processor
-   holds one pointer to whichever is active.
-2. **Core: the band gate** (`fxme::BandGate`, new): a level detector on the
-   band (RMS over a few ms, in dB) against the gate and ceiling thresholds,
-   with the same knee (a smoothstep over the level in dB) and the same attack
-   and release (per sample here, so an attack under 11 ms finally means
-   something). Target gain `rise (gate) x (1 - rise (ceiling))` as in the
-   spectral splitter, so a region's settings mean the same thing in both
-   modes, only at a coarser grain. Openness for the meter is the gate gain
-   itself. Core tests: threshold, knee, attack and release times, ceiling,
-   and the splitter's band levels against `EdgeBandPass` alone.
-3. **The gate line on the spectrum.** In live mode the gate compares the
-   *band's* level, not a bin's, and the two differ (a band's level sums many
-   bins). A line drawn on the spectrum trace would sit at the wrong place. Add
-   an optional per-region level marker to `fxme::SpectrumRegionEditor` (a short
-   tick or bar inside the rectangle at the band's current level, fed by the
-   consumer from the splitter), shown in live mode, so the gate and ceiling
-   are set against the level they are compared to. FxmeTools change, opt-in.
-4. **Switching engines.** Non-automatable global parameter `engine`
-   (Spectral / Live). Extend the path built for the FFT size (item 6, done:
-   the processor's `parameterChanged` -> `handleAsyncUpdate` ->
-   `configureSpectralEngine`, with processing suspended): listen to `engine`
-   too, and prepare the engine being switched to, reset the regions
-   (`resetRegion`), set the dry delay to the new latency (0 in live) and
-   `setLatencySamples()`. Expect a short gap, and
-   hosts that only pick up the latency change on transport stop.
-5. **Processor.** `processChunk` takes each region's mono band from the active
-   splitter; everything after it (degrade, keep in band, pan, Dry, delay,
-   send, solo, meters) is shared and unchanged. The spectral effects are
-   skipped in live mode (the Spectral tab's switches have no effect, and the
-   tab says so).
-6. **Region Dry in live mode.** The band-pass's phase shift makes a region's
-   Dry colour the sound near its edges when added to the global dry. Document
-   it. (If it matters in practice: a matching all-pass on the global dry
-   cannot fix eight overlapping arbitrary bands, so there is no cheap cure.)
-7. **Presets and docs.** New parameters at their defaults in the factory
-   presets (spectral mode, so nothing changes), `architecture.md` (a section
-   on the two engines and the table above), the help text, `api-changes.md`
-   for the two core classes and the level marker.
-
-Possible later, complementary rather than competing: in the spectral engine,
-report zero latency and shorten each region's delay line by the FFT latency, so
-the repeats still land on time and the global dry is undelayed. Delay times
-under one window then become unreachable, and a region's Dry comes out one
-window late. A third option for live use that keeps per-bin gating.
 
 ## Verifying a change
 

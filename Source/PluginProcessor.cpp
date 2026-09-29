@@ -96,6 +96,10 @@ DedeAudioProcessor::createParameterLayout()
     // The splitter's window: resolution against latency. Not automatable: it
     // re-allocates and changes the latency, which must not come from a lane.
     layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ids::engine, 1 }, "Engine", engineNames, 0,
+        AudioParameterChoiceAttributes().withAutomatable (false)));
+
+    layout.add (std::make_unique<AudioParameterChoice> (
         ParameterID { ids::fftSize, 1 }, "FFT Size", fftSizeNames, defaultFftSizeIndex,
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
@@ -306,11 +310,13 @@ DedeAudioProcessor::DedeAudioProcessor()
     inputTap.setEnabled (true);
     splitter.setBandProcessor (&spectral);
     apvts.addParameterListener (ids::fftSize, this);
+    apvts.addParameterListener (ids::engine, this);
 }
 
 DedeAudioProcessor::~DedeAudioProcessor()
 {
     apvts.removeParameterListener (ids::fftSize, this);
+    apvts.removeParameterListener (ids::engine, this);
     cancelPendingUpdate();
 }
 
@@ -318,6 +324,48 @@ DedeAudioProcessor::~DedeAudioProcessor()
 int DedeAudioProcessor::requestedFftOrder() const
 {
     return fftOrderForChoice (juce::roundToInt (pFftSize->load()));
+}
+
+bool DedeAudioProcessor::requestedLiveEngine() const
+{
+    return juce::roundToInt (pEngine->load()) == liveEngineIndex;
+}
+
+void DedeAudioProcessor::configureEngine (bool live, int order, bool resetRegions)
+{
+    if (live)
+    {
+        // The filter bank: no FFT, so no latency, and the dry path is not
+        // delayed at all.
+        filterBank.prepare (sampleRate, preparedBlockSize, maxRegions);
+        filterBank.setApplyPan (false);
+        setDryLatency (0);
+        activeFftOrder.store (order);   // the view keeps the size the combo shows
+    }
+    else
+    {
+        configureSpectralEngine (order);
+    }
+
+    // Whatever the regions held (degrade state, delay lines, freeze and blur
+    // frames) was lined up with the other engine's timing. prepareToPlay
+    // prepares them afresh itself.
+    if (resetRegions)
+        for (int i = 0; i < maxRegions; ++i)
+            resetRegion (i);
+
+    liveEngine.store (live);
+}
+
+void DedeAudioProcessor::setDryLatency (int latency)
+{
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) preparedBlockSize, 2 };
+    dryDelay.setMaximumDelayInSamples (juce::jmax (1, latency));
+    dryDelay.prepare (spec);
+    dryDelay.setDelay ((float) latency);
+    dryDelay.reset();
+    dryLatency = latency;
+    setLatencySamples (latency);
 }
 
 void DedeAudioProcessor::configureSpectralEngine (int order)
@@ -334,13 +382,7 @@ void DedeAudioProcessor::configureSpectralEngine (int order)
 
     // The dry path waits for the splitter, so the two stay lined up, and the
     // host is told the total.
-    const int latency = splitter.getLatencySamples();
-    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) preparedBlockSize, 2 };
-    dryDelay.setMaximumDelayInSamples (juce::jmax (1, latency));
-    dryDelay.prepare (spec);
-    dryDelay.setDelay ((float) latency);
-    dryDelay.reset();
-    setLatencySamples (latency);
+    setDryLatency (splitter.getLatencySamples());
 
     // Orders 10 to 14 are inside the splitter's own range (8 to 14), so it
     // runs at exactly the one asked for.
@@ -350,7 +392,7 @@ void DedeAudioProcessor::configureSpectralEngine (int order)
 void DedeAudioProcessor::parameterChanged (const juce::String& parameterID, float)
 {
     // Can come from any thread, the audio thread included: only schedule.
-    if (parameterID == ids::fftSize)
+    if (parameterID == ids::fftSize || parameterID == ids::engine)
         triggerAsyncUpdate();
 }
 
@@ -361,15 +403,26 @@ void DedeAudioProcessor::handleAsyncUpdate()
     if (preparedBlockSize <= 0)
         return;
 
+    const bool live = requestedLiveEngine();
     const int order = requestedFftOrder();
-    if (order == activeFftOrder.load())
+    const bool engineChanged = live != liveEngine.load();
+
+    // The FFT size only matters to the spectral engine; in live mode it is
+    // applied when switching back.
+    if (! engineChanged && (live || order == activeFftOrder.load()))
+    {
+        activeFftOrder.store (order);
         return;
+    }
 
     // suspendProcessing takes the callback lock, so no block is in flight
-    // while the splitter re-allocates; the host gets silence meanwhile (about
-    // one window). The GUI reads the splitter from this same thread.
+    // while the engine re-allocates; the host gets silence meanwhile (about
+    // one window). The GUI reads the splitters from this same thread.
     suspendProcessing (true);
-    configureSpectralEngine (order);
+    if (engineChanged)
+        configureEngine (live, order, true);
+    else
+        configureSpectralEngine (order);
     suspendProcessing (false);
 }
 
@@ -393,6 +446,7 @@ void DedeAudioProcessor::cacheParameterPointers()
     pGateAttack  = raw (ids::gateAttack);
     pGateRelease = raw (ids::gateRelease);
     pFftSize  = raw (ids::fftSize);
+    pEngine   = raw (ids::engine);
 
     for (int i = 0; i < maxRegions; ++i)
     {
@@ -440,7 +494,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     sampleRate = newSampleRate;
     preparedBlockSize = samplesPerBlock;
 
-    configureSpectralEngine (requestedFftOrder());
+    configureEngine (requestedLiveEngine(), requestedFftOrder(), false);
 
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
@@ -573,6 +627,8 @@ void DedeAudioProcessor::buildMonoInput (const juce::AudioBuffer<float>& buffer,
 
 void DedeAudioProcessor::updateBands()
 {
+    const bool live = liveEngine.load();
+
     for (int i = 0; i < maxRegions; ++i)
     {
         const auto& r = regions[i];
@@ -599,7 +655,10 @@ void DedeAudioProcessor::updateBands()
         band.ceilingDb = ceilDb >= gateCeilDb ? fxme::SpectralBandSplitter::offCeilingDb
                                               : ceilDb;
 
-        splitter.setBand (i, band);
+        if (live)
+            filterBank.setBand (i, band);
+        else
+            splitter.setBand (i, band);
 
         fxme::SpectralBandEffects::Settings fx;
         fx.pitchOn        = r.pitchOn->load() > 0.5f;
@@ -704,7 +763,13 @@ float DedeAudioProcessor::takeOutputPeakDb (int channel) noexcept
 
 float DedeAudioProcessor::getGateOpenness (int slot) const noexcept
 {
-    return splitter.getGateOpenness (slot);
+    return liveEngine.load() ? filterBank.getGateOpenness (slot)
+                             : splitter.getGateOpenness (slot);
+}
+
+float DedeAudioProcessor::getBandLevelDb (int slot) const noexcept
+{
+    return liveEngine.load() ? filterBank.getBandLevelDb (slot) : -200.0f;
 }
 
 void DedeAudioProcessor::applyKeepInBand (int slot, float* x, int numSamples)
@@ -852,7 +917,11 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     buildMonoInput (buffer, startSample, numSamples);
     inputTap.push (monoBuffer.getReadPointer (0), numSamples);
 
-    splitter.process (monoBuffer.getReadPointer (0), numSamples);
+    const bool live = liveEngine.load();
+    if (live)
+        filterBank.process (monoBuffer.getReadPointer (0), numSamples);
+    else
+        splitter.process (monoBuffer.getReadPointer (0), numSamples);
 
     // Each region's band goes through its own stereo delay, and the delay
     // outputs are what the wet bus carries. The region's own band, undelayed,
@@ -898,7 +967,9 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
         // Band (mono, gain applied) -> degrade -> pan -> the region's delay.
         float* band = bandBuffer.getWritePointer (0);
-        juce::FloatVectorOperations::copy (band, splitter.getBandOutput (i, 0), numSamples);
+        juce::FloatVectorOperations::copy (band, live ? filterBank.getBandOutput (i, 0)
+                                                      : splitter.getBandOutput (i, 0),
+                                           numSamples);
         applyDegrade (i, band, numSamples);
         applyKeepInBand (i, band, numSamples);
 
@@ -997,10 +1068,15 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
         for (int ch = 0; ch < numOut; ++ch)
         {
             // The dry path is delayed to match the splitter, so the two arrive
-            // together and the host's latency compensation lines both up.
+            // together and the host's latency compensation lines both up. The
+            // live engine has no latency, and the dry path none either.
             float* d = buffer.getWritePointer (ch, startSample);
-            dryDelay.pushSample (ch, d[i]);
-            const float dry = dryDelay.popSample (ch);
+            float dry = d[i];
+            if (dryLatency > 0)
+            {
+                dryDelay.pushSample (ch, dry);
+                dry = dryDelay.popSample (ch);
+            }
 
             const int side = juce::jmin (ch, 1);
             // The regions' own dry bands answer to their own levels only, not
@@ -1031,9 +1107,18 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // Before updateBands(): a knee change recomputes every band's thresholds,
     // and setBand() then works from the new knee.
-    splitter.setGateKnee (pGateKnee->load());
-    // Two exponentials: cheap enough to recompute every block.
-    splitter.setGateTimes (pGateAttack->load() * 0.001f, pGateRelease->load() * 0.001f);
+    // Two exponentials for the times: cheap enough to recompute every block.
+    const float attack = pGateAttack->load() * 0.001f, release = pGateRelease->load() * 0.001f;
+    if (liveEngine.load())
+    {
+        filterBank.setGateKnee (pGateKnee->load());
+        filterBank.setGateTimes (attack, release);
+    }
+    else
+    {
+        splitter.setGateKnee (pGateKnee->load());
+        splitter.setGateTimes (attack, release);
+    }
     updateBands();
 
     dryGain.setTargetValue (juce::Decibels::decibelsToGain (pDryLevel->load()));

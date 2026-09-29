@@ -7,8 +7,9 @@
 
       - Reverb: room, damping and width of the shared reverb (its return
         level is with the other levels, in the left column).
-      - Engine: the splitter's FFT size, with what it comes to (latency, bin
-        width, and the step at which the gates move).
+      - Engine: Spectral (the STFT splitter) or Live (a filter bank, no
+        latency), and the spectral engine's FFT size, with what the choice
+        comes to (latency, bin width and gate step, or what Live gives up).
       - Gate: attack, release and knee, shared by every region.
 
     All of them are ordinary parameters, saved with the session and recalled
@@ -46,21 +47,22 @@ private:
     void timerCallback() override;
 
     /** The two read-out lines under the FFT size, from what the processor
-        actually runs (a new size is applied asynchronously). */
+        actually runs (a change is applied asynchronously). */
     juce::StringArray engineText() const;
 
     DedeAudioProcessor& processor;
 
     fxme::FxmeSlider roomKnob, dampKnob, widthKnob;
 
-    juce::ComboBox fftSizeBox;
-    std::unique_ptr<ComboBoxAttachment> fftSizeAttachment;
+    juce::ComboBox engineBox, fftSizeBox;
+    std::unique_ptr<ComboBoxAttachment> engineAttachment, fftSizeAttachment;
 
     fxme::FxmeSlider attackKnob, releaseKnob, kneeKnob;
     fxme::InfoButton infoButton;
 
     juce::StringArray readout;
-    juce::Rectangle<int> titleArea, reverbHeading, engineHeading, fftLabel, readoutArea, gateHeading;
+    juce::Rectangle<int> titleArea, reverbHeading, engineHeading, engineLabel, fftLabel,
+                         readoutArea, gateHeading;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalPanel)
 };
