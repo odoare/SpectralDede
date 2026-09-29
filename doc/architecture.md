@@ -235,7 +235,7 @@ does not know which engine fed it.
 | Latency | one FFT window (43 ms at 2048) | none |
 | CPU, 8 regions | about 1 % of a core at 2048 points | about the same (the filters are most of it) |
 | Gate and ceiling | per frequency bin: keep only the peaks of a band, or only its floor | per band: the whole band opens or closes (a multiband gate), per sample |
-| Region edges | near brick-wall | 24 dB per octave: neighbours overlap, narrow regions lose level (about 2 dB at half an octave) |
+| Region edges | near brick-wall, neighbours crossfading over 2 bins so that touching regions with open gates add up to the dry signal exactly (20 Hz and 20 kHz reach DC and Nyquist) | 24 dB per octave: neighbours overlap, narrow regions lose level (about 2 dB at half an octave) |
 | Transients | softened by the window (pre-echo) | intact |
 | Spectral tab (pitch, freeze, blur) | yes | no effect (the tab is dimmed and says so) |
 | Region Dry added to the global dry | phase-aligned, clean | phase shifts near the edges colour the sum there a little |

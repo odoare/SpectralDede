@@ -4,6 +4,36 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Touching regions rebuild the dry signal exactly; sharper attacks (2026-09-29)
+
+Question: why do regions covering the whole spectrum not sound like the dry
+signal, with blurred attacks, when the live engine almost does? Measured on a
+click through 8 touching regions, gates open: the spectral sum had -24 dB of
+energy *before* the click, as much as after (pre-echo spread over the 43 ms
+window), and only 0.82 of its peak. Two causes, both in the splitter's masks:
+
+- each region faded its two outermost bins inside itself, so two neighbours
+  summed to 0.25 + 0.75 per side instead of 1: a notch of a few bins at every
+  border, and the STFT's filtering being zero-phase within a window, each
+  notch rang before the attack as much as after;
+- the ends of the range cut at 20 Hz and 20 kHz with near brick-wall edges,
+  which rang too (at 20 kHz, hardly audible, but most of the peak loss).
+
+The live engine's filters are causal: they smear phase after the attack,
+never before it, which the ear forgives.
+
+Fix (FxmeTools `SpectralBandSplitter`): the edge crossfade is centred on the
+edge, a band's gain being its lower edge's step minus its upper edge's, so
+neighbours sum to exactly 1; a hard edge gives its boundary bin to one band
+only; edges at 20 Hz and 20 kHz reach DC and Nyquist. Now the click comes
+back at 1.000, nothing before it (-142 dB), total error -136 dB. New core test
+(group 11): 8 touching bands rebuild a click and noise to -137 dB at 1024,
+2048 and 8192 points, tapers 0, 2 and 4.
+
+What remains is what is asked for: a gate or ceiling that closes bins, or a
+spectral effect, still spreads its change over the window, before and after.
+Smaller FFT sizes shorten it; the live engine avoids it.
+
 ## Stereo bands, detected in mono (2026-09-29)
 
 The regions no longer have to be mono. A global **Bands** choice (Stereo, the
