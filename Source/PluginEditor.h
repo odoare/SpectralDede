@@ -33,7 +33,6 @@ public:
     ~DedeAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
-    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -84,6 +83,23 @@ private:
 
     fxme::TopBar topBar { "Dede", "spectral multi-delay and reverb",
                           JucePlugin_VersionString, logoImage() };
+
+    /** A soft glow around the top bar's accent hairline, spilling a little
+        into the bar and into the margin below it. A child of its own, added
+        right after the top bar, so it sits above the bar but below everything
+        added later: the region and preset callouts cover it. It ignores the
+        mouse. */
+    class HairlineGlow : public juce::Component
+    {
+    public:
+        HairlineGlow() { setInterceptsMouseClicks (false, false); }
+
+        /** How far the glow reaches above and below the line, in pixels. */
+        static constexpr int above = 5, below = 9;
+
+        void paint (juce::Graphics&) override;
+    };
+    HairlineGlow hairlineGlow;
 
     /** The FX-Mechanics logo, from the binary data (empty without it). */
     static juce::Image logoImage();

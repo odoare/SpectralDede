@@ -80,6 +80,7 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     topBar.setAccentColour (theme::accent);
     topBar.setBackgroundColour (theme::topBarBg);
     addAndMakeVisible (topBar);
+    addAndMakeVisible (hairlineGlow);   // right after the bar: above it, below the rest
 
     presetBar.setAccentColour (theme::accent);
     presetBrowserButton.setTooltip ("Browse, save and delete presets");
@@ -434,23 +435,21 @@ void DedeAudioProcessorEditor::paint (juce::Graphics& g)
     theme::paintBackground (g, getLocalBounds().toFloat());
 }
 
-void DedeAudioProcessorEditor::paintOverChildren (juce::Graphics& g)
+void DedeAudioProcessorEditor::HairlineGlow::paint (juce::Graphics& g)
 {
-    // A soft glow around the top bar's accent hairline: over the children, so
-    // it spills a little into the bar above the line and into the margin
-    // below it, and a brighter line on top. The margin below is empty, so
-    // nothing is covered but background.
-    const float lineY = (float) topBar.getBottom() - 1.5f;
+    // The line itself, 1.5 px thick, is exactly the top bar's own hairline
+    // (drawn over, brighter): the component starts `above` + 0.5 px above it.
+    // The glow fades away on each side.
+    const float lineY = (float) above + 0.5f;
     const float width = (float) getWidth();
-    constexpr float above = 5.0f, below = 9.0f;
 
-    g.setGradientFill (juce::ColourGradient (theme::accent.withAlpha (0.0f), 0.0f, lineY - above,
+    g.setGradientFill (juce::ColourGradient (theme::accent.withAlpha (0.0f), 0.0f, 0.0f,
                                              theme::accent.withAlpha (0.22f), 0.0f, lineY, false));
-    g.fillRect (juce::Rectangle<float> (0.0f, lineY - above, width, above));
+    g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, width, lineY));
 
     g.setGradientFill (juce::ColourGradient (theme::accent.withAlpha (0.30f), 0.0f, lineY + 1.5f,
-                                             theme::accent.withAlpha (0.0f), 0.0f, lineY + 1.5f + below, false));
-    g.fillRect (juce::Rectangle<float> (0.0f, lineY + 1.5f, width, below));
+                                             theme::accent.withAlpha (0.0f), 0.0f, lineY + 1.5f + (float) below, false));
+    g.fillRect (juce::Rectangle<float> (0.0f, lineY + 1.5f, width, (float) below));
 
     g.setColour (theme::accent.withAlpha (0.9f));
     g.fillRect (juce::Rectangle<float> (0.0f, lineY, width, 1.5f));
@@ -460,6 +459,11 @@ void DedeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
     topBar.setBounds (area.removeFromTop (theme::topBarHeight));
+
+    // The top bar's hairline is its bottom 1.5 px.
+    const int lineY = topBar.getBottom() - 2;
+    hairlineGlow.setBounds (0, lineY - HairlineGlow::above, getWidth(),
+                            HairlineGlow::above + 2 + HairlineGlow::below);
 
     area.reduce (theme::margin, theme::margin);
 
