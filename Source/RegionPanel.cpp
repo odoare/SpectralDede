@@ -25,7 +25,9 @@ namespace
     constexpr int numKnobs     = 8;     // the delay page's row sets the width
     constexpr int panelMargin  = 8;
 
-    constexpr int pageHeight = pagePadding + knobHeight + footerHeight;
+    constexpr int positionRowHeight = 24;   // a degrade stage's position selector
+
+    constexpr int pageHeight = pagePadding + knobHeight + footerHeight + positionRowHeight;
 
     /** Alpha of the controls of a degrade stage that is switched off: still
         editable (so a stage can be set up before it is heard), visibly idle. */
@@ -183,12 +185,14 @@ public:
         const juce::StringArray* choices = nullptr;
     };
 
-    /** One stage: its switch, its title, and its controls. */
+    /** One stage: its switch, its title, its controls, and optionally the
+        choice of where it runs, shown under its controls. */
     struct Stage
     {
         const char* onSuffix;
         juce::String title;
         std::vector<Control> controls;
+        const char* positionSuffix = nullptr;
     };
 
     StagesPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour,
@@ -222,6 +226,19 @@ public:
                     stage->controls.push_back (makeKnob (*this, processor, slot, c.suffix,
                                                          c.label, accentColour));
                 }
+            }
+
+            if (spec.positionSuffix != nullptr)
+            {
+                stage->positionBox = std::make_unique<juce::ComboBox>();
+                stage->positionBox->addItemList (degradePositionNames, 1);
+                stage->positionBox->setTooltip ("Where this stage runs: before the delay (the region's "
+                                                "Dry hears it too), in the delay loop (the first echo, "
+                                                "then again on every repeat), or after the delay");
+                theme::styleCombo (*stage->positionBox, accentColour);
+                addAndMakeVisible (*stage->positionBox);
+                stage->attachments.push_back (std::make_unique<ComboBoxAttachment> (
+                    apvts, ids::region (slot, spec.positionSuffix), *stage->positionBox));
             }
 
             stages.push_back (std::move (stage));
@@ -271,6 +288,12 @@ public:
 
             stage.onSwitch->setBounds (column.removeFromTop (switchHeight).reduced (6, 0));
 
+            if (stage.positionBox != nullptr)
+            {
+                auto row = column.removeFromBottom (positionRowHeight);
+                stage.positionBox->setBounds (row.withSizeKeepingCentre (juce::jmin (110, row.getWidth() - 8), 20));
+            }
+
             for (auto& c : stage.controls)
             {
                 auto cell = column.removeFromLeft (unit);
@@ -290,6 +313,7 @@ private:
         const char* onSuffix = nullptr;
         std::unique_ptr<fxme::FxmeButton> onSwitch;
         std::vector<std::unique_ptr<juce::Component>> controls;
+        std::unique_ptr<juce::ComboBox> positionBox;
         std::vector<std::unique_ptr<ComboBoxAttachment>> attachments;
     };
 
@@ -310,6 +334,8 @@ private:
             for (auto& c : stage->controls)
                 if (c->getAlpha() != alpha)
                     c->setAlpha (alpha);
+            if (stage->positionBox != nullptr && stage->positionBox->getAlpha() != alpha)
+                stage->positionBox->setAlpha (alpha);
         }
     }
 
@@ -368,14 +394,14 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     tabs->addTab ("Delay",   theme::panel, new DelayPage   (processor, slot, accent), true);
     using Stage = StagesPage::Stage;
 
-    // The band before its delay, in signal order: saturation, bit-crush,
-    // downsample.
+    // In signal order within a position: saturation, bit-crush, downsample,
+    // shift. Each chooses its own position: before, in or after the delay.
     const std::vector<Stage> degrade {
         { ids::rgSatOn,   "Saturation", { { ids::rgSatModel,  "Model", &saturationModelNames },
-                                          { ids::rgSatDrive,  "Drive" } } },
-        { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } } },
-        { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } } },
-        { ids::rgKeep,    "Keep in band", {} },   // a switch only: after the three stages
+                                          { ids::rgSatDrive,  "Drive" } }, ids::rgSatPos },
+        { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } },  ids::rgCrushPos },
+        { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } }, ids::rgDsPos },
+        { ids::rgShiftOn, "Shift",      { { ids::rgShiftSt,   "Semitones" } }, ids::rgShiftPos },
     };
 
     // Inside the splitter's frame: freeze or blur, then pitch.

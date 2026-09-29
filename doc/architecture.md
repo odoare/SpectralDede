@@ -27,14 +27,15 @@ stereo delay in three time modes, and a send to a shared reverb.
 ```
                         ┌──────────────── dry ────────────────┐
                         │                                     │
-  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> degrade ──> pan ─┬─> region Dry ───┬─> out
-                              (STFT)      │                                 └─> delay ─> Delay ┤
+  in ──> spectrum tap ──┴─> band splitter ──> region 0 ──> degrade ──> pan ─┬─> region Dry ─────────────────┬─> out
+                              (STFT)      │               (before)          └─> delay ─> degrade ─> Delay ┤
+                                          │                        (in loop: ↺)        (after)            │
                                           ├─> region 1 ── ... (same strip)                     │
                                           └─> ...                                              │
                                               per-region sends (from Dry + Delay) ──> reverb ──┘
 ```
 
-A region is a small channel strip. Its band, degraded and panned, leaves it two
+A region is a small channel strip. Its band, panned, leaves it two
 ways, each at its own level: as it is, undelayed (the region's **Dry**, off by
 default), and through its delay (**Delay**, 0 dB by default). The reverb send
 is taken from the sum of the two, after their levels, like a post-fader send:
@@ -48,11 +49,42 @@ the regions). The regions' Dry outputs are on a bus of their own, scaled only
 by the output trim, not by the global Dry nor by Delays.
 
 Each region leaves the splitter mono, with its gain applied but not its pan
-(`setApplyPan (false)`). It goes through its degrade chain (saturation, then
-bit-crush, then downsample, each with its own switch and skipped when off),
-and only then is panned, constant power, before its delay. Panning after the
-degrade chain keeps a saturator from driving the louder side of a panned
-region harder. The drive knob sets how hard the band clips, not how loud it
+(`setApplyPan (false)`), and is panned (constant power) before its delay.
+
+**The degrade stages** are saturation, bit-crush, downsample and **Shift** (a
+time-domain pitch shift), each with its own switch (skipped when off) and its
+own **position**:
+
+- **Before** the delay: on the mono band, before the pan (so a saturator does
+  not drive the louder side of a panned region harder). The region's Dry
+  hears it too.
+- **In loop**: inside `fxme::StereoCrossDelay`'s feedback loop, on everything
+  written into the lines (the input plus the fed-back signal), through the
+  delay's per-sample insert. The first echo goes through it once, the second
+  twice, and so on: a saturator drives each repeat harder, a crusher grinds it
+  further, a Shift of +12 climbs an octave per repeat (the classic shimmer,
+  todo item 13b). Stereo.
+- **After** the delay: on the repeats as they leave, stereo.
+
+Within one position the order is fixed: saturation, bit-crush, downsample,
+shift. A stage that comes on or moves starts from rest. Each region's state
+is two of each stage (one per channel; before the delay only the first is
+used) and one stereo shifter.
+
+**Shift** is `fxme::SplicePitchShifter` (FxmeTools core), -24 to +24
+semitones, default +12: a delay-line shifter whose splices are aligned on the
+signal by cross-correlation, so a tone stays in phase across them (the
+older free-running `fxme::PitchShifter` turns a sine shifted by an octave
+into a comb of lines, the target sometimes 60 dB down). Stereo with one set
+of splices for both sides. It delays by about 20 ms (half its 40 ms window
+plus a few samples). In the loop that would lengthen every repeat, so
+`updateDelay()` takes it off the delay time (down to 1 ms: a time set under
+about 20 ms then repeats a little late). Before or after the delay it is not
+compensated: the band, and its Dry, arrive about 20 ms late. At 0 semitones
+it is a clean delay with no splices. CPU: about 0.3 % of a core per region at
+0 semitones, 0.5 % at +-12, 1 % at +24.
+
+The drive knob sets how hard the band clips, not how loud it
 comes out: the saturator's output is divided by its drive (unity for small
 signals, instantly), then an `fxme::LevelMatcher` brings it back to the
 band's RMS before the saturator (200 ms followers). The division alone is
@@ -61,15 +93,10 @@ quieter as the drive rises (26 dB quieter at 36 dB of drive on a loud tone).
 The saturator's bias and sag are fixed per model (sag 0.5 except Standard,
 Class AB with a -0.1 overlap for its crossover notch).
 
-The degrade chain spreads energy outside the region (harmonics from the
-saturator, aliasing from bit-crush and downsample). Its **Keep in band**
-switch, last on the Degrade tab, band-passes the region back to its range
-right after the chain (`fxme::EdgeBandPass`: 24 dB per octave on each side,
-edges smoothed so dragging a border does not zipper). With the region's pitch
-shift on, it follows the *shifted* range, or it would cancel the shift. The
-slopes are much softer than the splitter's spectral mask, so a little of the
-spill remains near the edges, and a region narrower than about an octave loses
-some level at its centre (about 2 dB for half an octave).
+The stages spread energy outside the region (harmonics, aliasing, and a
+Shift moves the whole band). That is left as it is: a "keep in band"
+band-pass after them was tried and removed, as it mostly took the effect
+away again.
 
 The reverb runs on every block whatever the sends are doing, so a tail keeps
 ringing after the region that fed it has been turned down or deleted.
@@ -89,8 +116,8 @@ different points and are worth keeping apart:
   them at once.)
 - **Free** (the `on` parameter, "slot in use") deletes the region. Its output
   fades through the same ramp, then the slot stops being processed. When the
-  slot is used again, every piece of its state (delay lines, degrade and
-  keep-in-band filters, spectral effects, meters, smoothed levels) is cleared
+  slot is used again, every piece of its state (delay lines, degrade stages,
+  spectral effects, meters, smoothed levels) is cleared
   first, so a new region never starts by replaying its predecessor's tail.
 
 A region that is off, or silenced by another's solo, is drawn dimmed on the
@@ -178,7 +205,7 @@ regions out of the input. **Spectral** (the default) is the splitter above.
 **Live** is `fxme::FilterBankSplitter`: per region an `fxme::EdgeBandPass`
 (4th-order Butterworth each side, 24 dB per octave) on the mono input, then an
 `fxme::BandGate` on the band's level, then its gain. Everything after the band
-(degrade, keep in band, pan, Dry, delay, send, solo, meters) is shared and
+(degrade, pan, Dry, delay, send, solo, meters) is shared and
 does not know which engine fed it.
 
 | | Spectral (default) | Live |
@@ -328,7 +355,9 @@ from the region's output after `dry` and `dly`).
 Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
 `satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,
 default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4),
-`keep` (keep in band). All default to off.
+`shfon`, `shfst` (-24 to +24 semitones, 0.01 steps, default +12), and one
+position per stage, `satpos`, `crshpos`, `dspos`, `shfpos` (Before, In loop,
+After; default Before). All stages default to off.
 
 Spectral, per region: `pshon`, `pshst` (-24 to +24 semitones, 0.01 steps),
 `frzon` (latched: captures the region's spectrum when switched on), `frzmod`

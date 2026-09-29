@@ -223,7 +223,7 @@ DedeAudioProcessor::createParameterLayout()
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
-        // ---- Degrade: saturation -> bit-crush -> downsample, all off ----------
+        // ---- Degrade: saturation -> bit-crush -> downsample -> shift, all off --
         layout.add (std::make_unique<AudioParameterBool> (
             ParameterID { id (ids::rgSatOn), 1 }, slot + "Saturation On", false));
 
@@ -255,10 +255,26 @@ DedeAudioProcessor::createParameterLayout()
             AudioParameterFloatAttributes().withStringFromValueFunction (
                 [] (float x, int) { return "x" + String (x, x < 10.0f ? 2 : 1); })));
 
-        // Band-passes the region back to its own range after the degrade
-        // chain, which spreads energy outside it.
         layout.add (std::make_unique<AudioParameterBool> (
-            ParameterID { id (ids::rgKeep), 1 }, slot + "Keep In Band", false));
+            ParameterID { id (ids::rgShiftOn), 1 }, slot + "Shift On", false));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgShiftSt), 1 }, slot + "Shift Semitones",
+            NormalisableRange<float> (-maxShiftSemitones, maxShiftSemitones, 0.01f),
+            defaultShiftSemitones,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return (x > 0.0f ? "+" : "") + String (x, 2) + " st"; })));
+
+        // Where each stage sits: before the delay, in its loop, or after it.
+        for (const auto* pos : { ids::rgSatPos, ids::rgCrushPos, ids::rgDsPos, ids::rgShiftPos })
+        {
+            const String stage = pos == ids::rgSatPos   ? "Saturation"
+                               : pos == ids::rgCrushPos ? "Bit-crush"
+                               : pos == ids::rgDsPos    ? "Downsample" : "Shift";
+            layout.add (std::make_unique<AudioParameterChoice> (
+                ParameterID { id (pos), 1 }, slot + stage + " Position",
+                degradePositionNames, (int) DegradePosition::before));
+        }
 
         // ---- Spectral transforms: pitch, freeze, blur, all off ----------------
         layout.add (std::make_unique<AudioParameterBool> (
@@ -477,7 +493,12 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.crushBits = raw (ids::region (i, ids::rgCrushBits));
         r.dsOn     = raw (ids::region (i, ids::rgDsOn));
         r.dsFactor = raw (ids::region (i, ids::rgDsFactor));
-        r.keep     = raw (ids::region (i, ids::rgKeep));
+        r.shiftOn  = raw (ids::region (i, ids::rgShiftOn));
+        r.shiftSt  = raw (ids::region (i, ids::rgShiftSt));
+        r.satPos   = raw (ids::region (i, ids::rgSatPos));
+        r.crushPos = raw (ids::region (i, ids::rgCrushPos));
+        r.dsPos    = raw (ids::region (i, ids::rgDsPos));
+        r.shiftPos = raw (ids::region (i, ids::rgShiftPos));
 
         r.pitchOn    = raw (ids::region (i, ids::rgPitchOn));
         r.pitchSt    = raw (ids::region (i, ids::rgPitchSt));
@@ -548,19 +569,22 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         panL[i].setCurrentAndTargetValue (left);
         panR[i].setCurrentAndTargetValue (right);
 
-        saturators[i].prepare (sampleRate);
-        satLevel[i].prepare (sampleRate);
-        keepFilters[i].prepare (sampleRate);
-        keepWasOn[i] = false;
+        auto& d = degrade[i];
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            d.sat[ch].prepare (sampleRate);
+            d.satLevel[ch].prepare (sampleRate);
+            d.ds[ch].reset();
+        }
+        d.shift.prepare (sampleRate, 2);
+        d.satDrive.reset (sampleRate, 0.02);
+        d.satPos = d.crushPos = d.dsPos = d.shiftPos = -1;
 
         audibleGain[i].reset (sampleRate, 0.005);
         audibleGain[i].setCurrentAndTargetValue (isAudible (i, anySolo()) ? 1.0f : 0.0f);
         needsReset[i] = false;
         for (auto& m : meters[i])
             m.prepare (sampleRate);
-        satDrive[i].reset (sampleRate, 0.02);
-        downsamplers[i].reset();
-        satWasOn[i] = dsWasOn[i] = false;
     }
 }
 
@@ -572,12 +596,24 @@ void DedeAudioProcessor::releaseResources()
     reverb.reset();
     for (auto& d : delays)
         d.reset();
-    for (auto& s : saturators)
-        s.reset();
-    for (auto& d : downsamplers)
-        d.reset();
-    for (auto& f : keepFilters)
-        f.reset();
+    for (int i = 0; i < maxRegions; ++i)
+        resetDegrade (i);
+}
+
+void DedeAudioProcessor::resetDegrade (int slot)
+{
+    auto& d = degrade[slot];
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        d.sat[ch].reset();
+        d.satLevel[ch].reset();
+        d.ds[ch].reset();
+    }
+    d.shift.reset();
+
+    // Every stage counts as newly placed on the next block, so it also snaps
+    // its drive rather than gliding from the last region's.
+    d.satPos = d.crushPos = d.dsPos = d.shiftPos = -1;
 }
 
 bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -718,10 +754,7 @@ bool DedeAudioProcessor::isAudible (int slot, bool soloing) const noexcept
 void DedeAudioProcessor::resetRegion (int slot)
 {
     delays[slot].reset();
-    saturators[slot].reset();
-    downsamplers[slot].reset();
-    keepFilters[slot].reset();
-    satWasOn[slot] = dsWasOn[slot] = keepWasOn[slot] = false;
+    resetDegrade (slot);
     spectral.resetBand (slot);
     for (auto& m : meters[slot])
         m.clear();
@@ -777,62 +810,30 @@ float DedeAudioProcessor::takeBandPeakLevelDb (int slot) noexcept
     return liveEngine.load() ? filterBank.takeBandPeakLevelDb (slot) : -200.0f;
 }
 
-void DedeAudioProcessor::applyKeepInBand (int slot, float* x, int numSamples)
+void DedeAudioProcessor::beginDegradeBlock (int slot)
 {
     const auto& r = regions[slot];
-    const bool on = r.keep->load() > 0.5f;
+    auto& d = degrade[slot];
 
-    if (on)
+    // Where a stage runs this block, -1 when off. A stage that has just come
+    // on, or moved, starts from rest: its state belonged to another signal.
+    const auto place = [] (std::atomic<float>* on, std::atomic<float>* pos)
     {
-        float low  = juce::jmin (r.fLo->load(), r.fHi->load());
-        float high = juce::jmax (r.fLo->load(), r.fHi->load());
+        return on->load() > 0.5f ? juce::jlimit (0, 2, (int) pos->load()) : -1;
+    };
 
-        // A pitch shift moves the band on purpose: follow the shifted range,
-        // or this would cancel the shift.
-        if (r.pitchOn->load() > 0.5f)
-        {
-            const float ratio = std::exp2 (r.pitchSt->load() / 12.0f);
-            low  *= ratio;
-            high *= ratio;
-        }
-
-        auto& filter = keepFilters[slot];
-
-        // Coming back on: start at the region's edges and from rest.
-        if (! keepWasOn[slot])
-        {
-            filter.setEdges (low, high, true);
-            filter.reset();
-        }
-        else
-        {
-            filter.setEdges (low, high);
-        }
-
-        filter.process (x, numSamples);
-    }
-
-    keepWasOn[slot] = on;
-}
-
-void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
-{
-    const auto& r = regions[slot];
-
-    // Stages that are off cost nothing: they are skipped, not run neutral.
-    const bool satOn = r.satOn->load() > 0.5f;
-    if (satOn)
+    const int satPos = place (r.satOn, r.satPos);
+    if (satPos >= 0)
     {
-        auto& sat = saturators[slot];
         const float driveGain = juce::Decibels::decibelsToGain (r.satDrive->load());
-
-        // Coming back on: forget the DC blocker and sag state of the last
-        // time, and start the drive where it is rather than gliding to it.
-        if (! satWasOn[slot])
+        if (satPos != d.satPos)
         {
-            sat.reset();
-            satLevel[slot].reset();
-            satDrive[slot].setCurrentAndTargetValue (driveGain);
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                d.sat[ch].reset();
+                d.satLevel[ch].reset();
+            }
+            d.satDrive.setCurrentAndTargetValue (driveGain);
         }
 
         // Bias and sag are not parameters; fixed values give each model its
@@ -840,48 +841,87 @@ void DedeAudioProcessor::applyDegrade (int slot, float* x, int numSamples)
         // negative overlap is what gives Class AB its crossover notch.
         using Model = fxme::Saturator::Model;
         const auto model = (Model) juce::jlimit (0, 3, (int) r.satModel->load());
-        sat.setModel (model);
-        sat.setSag (model == Model::Standard ? 0.0f : 0.5f);
-        sat.setBias (model == Model::ClassAB ? -0.1f : 0.0f);
+        for (auto& sat : d.sat)
+        {
+            sat.setModel (model);
+            sat.setSag (model == Model::Standard ? 0.0f : 0.5f);
+            sat.setBias (model == Model::ClassAB ? -0.1f : 0.0f);
+        }
+        d.satDrive.setTargetValue (driveGain);
+    }
+    d.satPos = satPos;
 
-        satDrive[slot].setTargetValue (driveGain);
+    d.crushPos = place (r.crushOn, r.crushPos);
+    if (d.crushPos >= 0)
+        for (auto& c : d.crush)
+            c.setBits (r.crushBits->load());
 
+    const int dsPos = place (r.dsOn, r.dsPos);
+    if (dsPos >= 0)
+    {
+        if (dsPos != d.dsPos)
+            for (auto& ds : d.ds)
+                ds.reset();
+        for (auto& ds : d.ds)
+            ds.setFactor (r.dsFactor->load());
+    }
+    d.dsPos = dsPos;
+
+    const int shiftPos = place (r.shiftOn, r.shiftPos);
+    if (shiftPos >= 0)
+    {
+        d.shift.setPitchSemitones (r.shiftSt->load());
+        if (shiftPos != d.shiftPos)
+            d.shift.reset();
+    }
+    d.shiftPos = shiftPos;
+}
+
+bool DedeAudioProcessor::hasDegradeAt (int slot, DegradePosition position) const noexcept
+{
+    const auto& d = degrade[slot];
+    const int p = (int) position;
+    return d.satPos == p || d.crushPos == p || d.dsPos == p || d.shiftPos == p;
+}
+
+void DedeAudioProcessor::degradeFrame (int slot, DegradePosition position,
+                                       float* frame, int numChannels) noexcept
+{
+    auto& d = degrade[slot];
+    const int p = (int) position;
+
+    if (d.satPos == p)
+    {
         // The drive sets how hard the band clips, not how loud it comes out.
         // Dividing back by the drive is right for small signals only: a band
         // that clips is capped whatever the drive, so the division alone
         // makes it quieter as the drive goes up. The level matcher brings
-        // the result back to the band's RMS before the saturator, measured
-        // (200 ms followers), which holds at every level.
-        auto& level = satLevel[slot];
-        for (int s = 0; s < numSamples; ++s)
+        // the result back to the RMS before the saturator, measured (200 ms
+        // followers), which holds at every level.
+        const float g = d.satDrive.getNextValue();
+        for (int ch = 0; ch < numChannels; ++ch)
         {
-            const float g = satDrive[slot].getNextValue();
-            sat.setDriveGain (g);
-            x[s] = level.process (x[s], sat.processSample (x[s]) / g);
+            d.sat[ch].setDriveGain (g);
+            frame[ch] = d.satLevel[ch].process (frame[ch], d.sat[ch].processSample (frame[ch]) / g);
         }
     }
-    satWasOn[slot] = satOn;
 
-    if (r.crushOn->load() > 0.5f)
+    if (d.crushPos == p)
+        for (int ch = 0; ch < numChannels; ++ch)
+            frame[ch] = d.crush[ch].processSample (frame[ch]);
+
+    if (d.dsPos == p)
+        for (int ch = 0; ch < numChannels; ++ch)
+            frame[ch] = d.ds[ch].processSample (frame[ch]);
+
+    if (d.shiftPos == p)
     {
-        auto& crusher = crushers[slot];
-        crusher.setBits (r.crushBits->load());
-        for (int s = 0; s < numSamples; ++s)
-            x[s] = crusher.processSample (x[s]);
+        // The shifter is stereo; a mono frame runs with a silent right side.
+        float f[2] { frame[0], numChannels > 1 ? frame[1] : 0.0f };
+        d.shift.processFrame (f);
+        for (int ch = 0; ch < numChannels; ++ch)
+            frame[ch] = f[ch];
     }
-
-    const bool dsOn = r.dsOn->load() > 0.5f;
-    if (dsOn)
-    {
-        auto& ds = downsamplers[slot];
-        if (! dsWasOn[slot])
-            ds.reset();
-
-        ds.setFactor (r.dsFactor->load());
-        for (int s = 0; s < numSamples; ++s)
-            x[s] = ds.processSample (x[s]);
-    }
-    dsWasOn[slot] = dsOn;
 }
 
 void DedeAudioProcessor::updateDelay (int slot)
@@ -896,8 +936,17 @@ void DedeAudioProcessor::updateDelay (int slot)
     const auto mode = (fxme::DelayTimeMode) juce::jlimit (0, numDelayModes - 1,
                                                           (int) r.mode->load());
 
-    delays[slot].setDelaySeconds (resolver.toSeconds (r.timeL->load(), mode),
-                                  resolver.toSeconds (r.timeR->load(), mode));
+    // A Shift in the loop delays everything going round by its own latency:
+    // take it off the lines, so the repeats still land on time.
+    float loopExtra = 0.0f;
+    if (r.shiftOn->load() > 0.5f && (int) r.shiftPos->load() == (int) DegradePosition::loop)
+        loopExtra = degrade[slot].shift.getLatencySamples() / (float) sampleRate;
+
+    const auto seconds = [&] (float value)
+    {
+        return juce::jmax (minLoopSeconds, resolver.toSeconds (value, mode) - loopExtra);
+    };
+    delays[slot].setDelaySeconds (seconds (r.timeL->load()), seconds (r.timeR->load()));
 
     // The lowest point of a feedback range is silence, not -60 dB: a delay set
     // to no feedback has to be exactly one repeat.
@@ -975,8 +1024,12 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
         juce::FloatVectorOperations::copy (band, live ? filterBank.getBandOutput (i, 0)
                                                       : splitter.getBandOutput (i, 0),
                                            numSamples);
-        applyDegrade (i, band, numSamples);
-        applyKeepInBand (i, band, numSamples);
+        // The degrade stages placed before the delay work on the mono band,
+        // so the region's Dry hears them too.
+        beginDegradeBlock (i);
+        if (hasDegradeAt (i, DegradePosition::before))
+            for (int s = 0; s < numSamples; ++s)
+                degradeFrame (i, DegradePosition::before, band + s, 1);
 
         float left = 0.0f, right = 0.0f;
         panGains (i, left, right);
@@ -991,9 +1044,30 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
             pr[s] = band[s] * panR[i].getNextValue();
         }
 
-        delays[i].process (pl, pr,
-                           regionBuffer.getWritePointer (0), regionBuffer.getWritePointer (1),
-                           numSamples);
+        // Stages in the loop act on what enters the delay lines: the first
+        // echo, then again on every repeat. Stages after it act on the
+        // repeats as they leave, stereo.
+        float* outL = regionBuffer.getWritePointer (0);
+        float* outR = regionBuffer.getWritePointer (1);
+        if (hasDegradeAt (i, DegradePosition::loop))
+            delays[i].process (pl, pr, outL, outR, numSamples, [this, i] (float& l, float& r) noexcept
+            {
+                float frame[2] { l, r };
+                degradeFrame (i, DegradePosition::loop, frame, 2);
+                l = frame[0];
+                r = frame[1];
+            });
+        else
+            delays[i].process (pl, pr, outL, outR, numSamples);
+
+        if (hasDegradeAt (i, DegradePosition::after))
+            for (int s = 0; s < numSamples; ++s)
+            {
+                float frame[2] { outL[s], outR[s] };
+                degradeFrame (i, DegradePosition::after, frame, 2);
+                outL[s] = frame[0];
+                outR[s] = frame[1];
+            }
 
         // The region's output is two parts, each at its own level: its band
         // as it is (Dry) and its repeats (Delay). The reverb send is taken

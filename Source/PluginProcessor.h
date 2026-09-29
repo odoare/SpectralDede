@@ -144,7 +144,12 @@ private:
         std::atomic<float>* crushBits = nullptr;
         std::atomic<float>* dsOn      = nullptr;
         std::atomic<float>* dsFactor  = nullptr;
-        std::atomic<float>* keep      = nullptr;
+        std::atomic<float>* shiftOn   = nullptr;
+        std::atomic<float>* shiftSt   = nullptr;
+        std::atomic<float>* satPos    = nullptr;
+        std::atomic<float>* crushPos  = nullptr;
+        std::atomic<float>* dsPos     = nullptr;
+        std::atomic<float>* shiftPos  = nullptr;
 
         std::atomic<float>* pitchOn    = nullptr;
         std::atomic<float>* pitchSt    = nullptr;
@@ -243,13 +248,24 @@ private:
     /** One region's constant-power pan as a pair of gains. */
     void panGains (int slot, float& left, float& right) const;
 
-    /** Runs one region's mono band through its degrade chain in place:
-        saturation, bit-crush, downsample, each skipped when off. */
-    void applyDegrade (int slot, float* x, int numSamples);
+    /** Reads one region's degrade parameters for the block: which stages
+        are on and where, their settings, and resets a stage that has just
+        come on or moved (it starts from rest in its new place). */
+    void beginDegradeBlock (int slot);
 
-    /** Band-passes one region's mono band back to its range (shifted by its
-        pitch, if on) when its "keep in band" switch is on; nothing when off. */
-    void applyKeepInBand (int slot, float* x, int numSamples);
+    /** One frame (1 channel before the delay, 2 in the loop and after it)
+        through the region's stages that sit at `position`, in their fixed
+        order: saturation, bit-crush, downsample, shift. */
+    void degradeFrame (int slot, dede::DegradePosition position, float* frame, int numChannels) noexcept;
+
+    /** Clears one region's degrade state (every stage starts from rest). */
+    void resetDegrade (int slot);
+
+    /** Shortest delay line time once a loop Shift's latency is taken off. */
+    static constexpr float minLoopSeconds = 0.001f;
+
+    /** Whether any of the region's stages is on at `position` this block. */
+    bool hasDegradeAt (int slot, dede::DegradePosition position) const noexcept;
 
     /** True when any region in use is soloed. */
     bool anySolo() const noexcept;
@@ -259,7 +275,7 @@ private:
     bool isAudible (int slot, bool soloing) const noexcept;
 
     /** Clears every piece of per-region state, for a slot being used again:
-        its delay lines, degrade and keep-in-band filters, spectral effects
+        its delay lines, degrade chain, spectral effects
         and meters, and snaps its smoothed levels to the new parameters. */
     void resetRegion (int slot);
 
@@ -275,19 +291,22 @@ private:
     fxme::FilterBankSplitter filterBank;
     fxme::StereoCrossDelay delays[dede::maxRegions];
 
-    // Degrade chain, one set per region. The band is mono at that point (the
-    // pan comes after), so one instance of each per region is enough.
-    fxme::Saturator   saturators[dede::maxRegions];
-    fxme::BitCrusher  crushers[dede::maxRegions];
-    fxme::Downsampler downsamplers[dede::maxRegions];
-    juce::SmoothedValue<float> satDrive[dede::maxRegions];
-    fxme::LevelMatcher satLevel[dede::maxRegions];   // the saturator's auto-gain
-    bool satWasOn[dede::maxRegions] {};
-    bool dsWasOn[dede::maxRegions] {};
+    /** One region's degrade chain. Before the delay the band is mono (the
+        pan comes after) and only channel 0 is used; in the loop and after
+        the delay both are. A stage sits at one position at a time. */
+    struct Degrade
+    {
+        fxme::Saturator    sat[2];
+        fxme::LevelMatcher satLevel[2];     // the saturator's auto-gain
+        fxme::BitCrusher   crush[2];
+        fxme::Downsampler  ds[2];
+        fxme::SplicePitchShifter shift;     // stereo, one set of splices
+        juce::SmoothedValue<float> satDrive;
 
-    /** "Keep in band": 24 dB/octave on each side, after the degrade chain. */
-    fxme::EdgeBandPass keepFilters[dede::maxRegions];
-    bool keepWasOn[dede::maxRegions] {};
+        /** Where each stage runs this block, -1 when off. */
+        int satPos = -1, crushPos = -1, dsPos = -1, shiftPos = -1;
+    };
+    Degrade degrade[dede::maxRegions];
 
     /** Solo and a freed slot's fade-out: the region's output gain. */
     juce::SmoothedValue<float> audibleGain[dede::maxRegions];

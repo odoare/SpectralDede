@@ -92,32 +92,6 @@ setter), so it needs a core test and an `api-changes.md` entry. Costs one
 multiply-add per bin per region per hop, and it delays the gate's opening on
 attacks by roughly the time constant.
 
-### 13b. Shimmer (pitch shift inside the delay feedback)
-
-*Optional. Items 12 and 13, its prerequisites, are done.*
-
-The classic shimmer: each repeat comes back shifted again (typically an
-octave up), so the repeats climb. This cannot be the spectral shifter of item
-13, because the feedback loop runs in the time domain after the splitter. It
-is the job of `fxme::PitchShifter` (time-domain, two read taps sweeping a
-short delay line with a crossfade): any ratio, per sample, can sit in a loop.
-It was designed for small detunes, so large intervals sound somewhat grainy;
-use a longer window (80 to 100 ms) for octaves, and judge by ear.
-
-1. **Feedback hook in `fxme::StereoCrossDelay`** (FxmeTools): an optional
-   insert on the fed-back signal (an interface pointer the consumer provides).
-   The same hook serves degrade-in-the-loop (item 12) and keep-in-band in the
-   loop (item 14, done: another `fxme::EdgeBandPass` per channel inside the
-   loop, on the same edges). Core test: no insert gives bit-identical output.
-2. **Parameters (per region):** shimmer on, interval (semitones, float,
-   default +12), amount (how much of the shifted signal goes into the
-   feedback versus the unshifted one). In the Delay tab.
-3. A gentle low-pass in the loop (fixed, around 10 kHz) keeps octave-up
-   feedback from piling up as a whistle. The feedback gains are already at
-   most 0 dB, so the loop stays stable.
-4. `fxme::PitchShifter` smooths its ratio internally, so the interval can be
-   moved without zipper noise.
-
 ### 16b. Smoothing times in the global controls
 
 *Not mandatory. What item 16 (done) left out.*

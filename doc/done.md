@@ -4,6 +4,42 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Degrade positions, Shift, and 13b (shimmer); keep in band removed (2026-09-29)
+
+- **Positions.** Each degrade stage (saturation, bit-crush, downsample, and
+  the new Shift) has a selector under its controls: **Before** the delay (on
+  the mono band, as before; the region's Dry hears it), **In loop** (on
+  everything written into the delay lines, so the first echo once and every
+  repeat again), or **After** the delay (on the repeats). New parameters
+  `satpos`, `crshpos`, `dspos`, `shfpos`, default Before, so nothing changes
+  by default. Each region's degrade state is now stereo (two of each stage,
+  one stereo shifter), with the stages placed per block
+  (`beginDegradeBlock`) and run per frame (`degradeFrame`).
+- **Shift** (`shfon`, `shfst`, -24 to +24 semitones, default +12): a
+  time-domain pitch shift, new stage on the Degrade tab. In the loop it is
+  the shimmer of todo item **13b**, done this way: each repeat climbs by the
+  interval. Its latency (about 20 ms) is taken off the delay time when it is
+  in the loop, so the repeats stay on time.
+- **FxmeTools.** `fxme::SplicePitchShifter` (new, core): the free-running
+  `fxme::PitchShifter` measured badly at an octave (a sine becomes a comb of
+  lines around the target, the target itself sometimes 60 dB down), so the
+  new one aligns each splice by cross-correlation (coarse then fine search)
+  and crossfades; stereo with shared splices; a clean delay at 0 semitones.
+  `fxme::StereoCrossDelay` gains a per-sample loop insert (a template
+  overload of `process`/`processSample`, zero cost when unused). Core tests
+  (`CoreDelayInsertTests`): a neutral insert changes nothing sample for
+  sample; the insert acts on the first echo and every repeat; 0 semitones is
+  an exact delay; +-7 and +-12 semitones land on the target at 220, 440 and
+  523 Hz (spectral peak within 0.5 %); identical channels stay identical.
+- **Keep in band removed**, as asked: it mostly took the degrade effects away
+  again. The `keep` parameter, the K button in the region column, the filters
+  and the help text are gone.
+- **Presets** re-saved: `keep` out, the six new parameters in (308 each).
+- **Not compensated:** a Shift before or after the delay delays that path by
+  about 20 ms (the band and its Dry before, the repeats after). A delay time
+  under about 20 ms with a Shift in the loop repeats a little late (the line
+  cannot go under 1 ms).
+
 ## Held maxima, to place the gates (2026-09-29)
 
 Not a todo item. A visual aid for setting the gate (and ceiling) against the

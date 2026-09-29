@@ -58,9 +58,6 @@ public:
                      "feeding it and its tails ring out");
         setUpToggle (solo, "S", ids::rgSolo, soloColour,
                      "Solo: silence every region not soloed (the dry signal is kept)");
-        setUpToggle (keep, "K", ids::rgKeep, colour,
-                     "Keep in band: filter what the degrade chain spills outside "
-                     "the region back into its range");
 
         setTooltip ("Region " + juce::String (slot + 1) + ": click to select it");
     }
@@ -73,7 +70,7 @@ public:
         if (used != inUse)
         {
             inUse = used;
-            for (auto* c : std::initializer_list<juce::Component*> { &freeButton, &active, &solo, &keep })
+            for (auto* c : std::initializer_list<juce::Component*> { &freeButton, &active, &solo })
                 c->setVisible (inUse);
             if (! inUse)
                 gateShown = levelShown[0] = levelShown[1] = 0.0f;
@@ -177,14 +174,11 @@ public:
         freeButton.setBounds (line.removeFromLeft (18));
         line.removeFromLeft (4);
 
-        // On is two letters, the others one.
-        const int unit = juce::jmax (16, (line.getWidth() - 2 * 3) / 4);
+        // On is two letters, S one.
+        const int unit = juce::jmax (16, (line.getWidth() - 3) / 3);
         active.setBounds (line.removeFromLeft (2 * unit));
-        for (auto* t : { &solo, &keep })
-        {
-            line.removeFromLeft (3);
-            t->setBounds (line.removeFromLeft (unit));
-        }
+        line.removeFromLeft (3);
+        solo.setBounds (line.removeFromLeft (unit));
     }
 
     void mouseDown (const juce::MouseEvent&) override
@@ -224,7 +218,7 @@ private:
     const juce::Colour colour;
 
     juce::TextButton freeButton;
-    fxme::AccentToggle active, solo, keep;
+    fxme::AccentToggle active, solo;
 
     // After the buttons, so the attachments go first when the row is destroyed.
     std::vector<std::unique_ptr<ButtonAttachment>> attachments;

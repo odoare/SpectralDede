@@ -82,7 +82,8 @@ namespace ids
     inline constexpr const char* rgDly   = "dly";     // dB, delay output into the mix
     inline constexpr const char* rgSend  = "send";    // dB, send to the reverb
 
-    // Degrade chain (saturation -> bit-crush -> downsample), per region.
+    // Degrade chain (saturation -> bit-crush -> downsample -> shift), per
+    // region. Each stage runs at its own position (see degradePositionNames).
     inline constexpr const char* rgSatOn    = "saton";   // bool
     inline constexpr const char* rgSatModel = "satmod";  // SaturationModel choice
     inline constexpr const char* rgSatDrive = "satdrv";  // dB
@@ -90,7 +91,12 @@ namespace ids
     inline constexpr const char* rgCrushBits = "bits";   // 1..24, fractional
     inline constexpr const char* rgDsOn     = "dson";    // bool
     inline constexpr const char* rgDsFactor = "dsf";     // hold length, 1..1024
-    inline constexpr const char* rgKeep     = "keep";    // bool, band-pass to the region's range
+    inline constexpr const char* rgShiftOn  = "shfon";   // bool, time-domain pitch shift
+    inline constexpr const char* rgShiftSt  = "shfst";   // semitones, fractional
+    inline constexpr const char* rgSatPos   = "satpos";  // DegradePosition choice
+    inline constexpr const char* rgCrushPos = "crshpos"; // DegradePosition choice
+    inline constexpr const char* rgDsPos    = "dspos";   // DegradePosition choice
+    inline constexpr const char* rgShiftPos = "shfpos";  // DegradePosition choice
 
     // Spectral transforms (pitch, freeze, blur), per region.
     inline constexpr const char* rgPitchOn  = "pshon";   // bool
@@ -152,6 +158,17 @@ inline constexpr float maxCrushBits      = 24.0f;
 inline constexpr float maxDownsample     = 1024.0f;
 
 /** Order of the saturation model choice; matches fxme::Saturator::Model. */
+/** Where a degrade stage sits in its region: on the band before the delay
+    (the region's Dry hears it too), inside the delay loop (on everything
+    written into the lines: the first echo, and again every repeat), or on
+    the delay's output. */
+enum class DegradePosition { before = 0, loop, after };
+inline const juce::StringArray degradePositionNames { "Before", "In loop", "After" };
+
+/** The Shift stage (time-domain pitch shift), in semitones. */
+inline constexpr float maxShiftSemitones     = 24.0f;
+inline constexpr float defaultShiftSemitones = 12.0f;
+
 inline const juce::StringArray saturationModelNames { "Standard", "Dynamic", "Triode", "Class AB" };
 
 /** Spectral transforms. Pitch in semitones, fractional; blur as the time

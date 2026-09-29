@@ -92,7 +92,7 @@ private:
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
 
     /** One row per region slot, left of the spectrum: free, on, solo,
-        keep in band, and the gate and level meters. */
+        and the gate and level meters. */
     RegionColumn column { processor };
     OutputMeter outputMeter { processor };
 

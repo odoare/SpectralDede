@@ -10,9 +10,11 @@
         output: its own band undelayed (Dry, off by default, added on top of
         the global dry), its repeats (Delay), and the send to the shared reverb
         (Reverb), taken after those two levels.
-      - Degrade: the region's band through saturation, bit-crush and
-        downsampling, each with its own switch, before it is panned and
-        reaches both its Dry output and its delay.
+      - Degrade: saturation, bit-crush, downsampling and a time-domain pitch
+        shift (Shift), each with its own switch and its own position: before
+        the delay (on the mono band, so the region's Dry hears it too), in
+        the delay loop (on what enters the lines: the first echo, then again
+        on every repeat), or after the delay (on the repeats).
       - Spectral: pitch shift (fractional semitones), freeze (tonal or wash)
         and blur, each with its own switch, done inside the splitter's frame
         before the band leaves it (so before the degrade chain).

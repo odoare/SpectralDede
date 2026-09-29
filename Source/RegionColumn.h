@@ -11,8 +11,6 @@
         its tails ring out; the region stays in place and editable.
       - S (solo): every region not soloed is silenced. Several can be on. The
         global dry is not affected.
-      - K (keep in band): band-passes the region back to its range after its
-        degrade chain (the same switch as on the Degrade tab).
       - A gate meter: how much of the region's energy its gate and ceiling let
         through.
       - A stereo meter: the region's output level, shown even when another
