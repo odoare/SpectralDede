@@ -9,6 +9,8 @@
   <PARAM id="revWidth" value="1"/>
   <PARAM id="revLevel" value="-12"/>
   <PARAM id="engine" value="0"/>
+  <PARAM id="bands" value="1"/>
+  <PARAM id="panlaw" value="0"/>
   <PARAM id="fftSize" value="1"/>
   <PARAM id="gateKnee" value="0"/>
   <PARAM id="gateAtk" value="5"/>

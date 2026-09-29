@@ -100,6 +100,14 @@ DedeAudioProcessor::createParameterLayout()
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
     layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ids::bandMode, 1 }, "Bands", bandModeNames, 0,
+        AudioParameterChoiceAttributes().withAutomatable (false)));
+
+    layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ids::panLaw, 1 }, "Pan Law", panLawNames, 0,
+        AudioParameterChoiceAttributes().withAutomatable (false)));
+
+    layout.add (std::make_unique<AudioParameterChoice> (
         ParameterID { ids::fftSize, 1 }, "FFT Size", fftSizeNames, defaultFftSizeIndex,
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
@@ -327,12 +335,14 @@ DedeAudioProcessor::DedeAudioProcessor()
     splitter.setBandProcessor (&spectral);
     apvts.addParameterListener (ids::fftSize, this);
     apvts.addParameterListener (ids::engine, this);
+    apvts.addParameterListener (ids::bandMode, this);
 }
 
 DedeAudioProcessor::~DedeAudioProcessor()
 {
     apvts.removeParameterListener (ids::fftSize, this);
     apvts.removeParameterListener (ids::engine, this);
+    apvts.removeParameterListener (ids::bandMode, this);
     cancelPendingUpdate();
 }
 
@@ -347,13 +357,20 @@ bool DedeAudioProcessor::requestedLiveEngine() const
     return juce::roundToInt (pEngine->load()) == liveEngineIndex;
 }
 
-void DedeAudioProcessor::configureEngine (bool live, int order, bool resetRegions)
+bool DedeAudioProcessor::requestedStereoBands() const
 {
+    return juce::roundToInt (pBandMode->load()) != monoBandsIndex;
+}
+
+void DedeAudioProcessor::configureEngine (bool live, int order, bool stereo, bool resetRegions)
+{
+    stereoBands.store (stereo);
+
     if (live)
     {
         // The filter bank: no FFT, so no latency, and the dry path is not
         // delayed at all.
-        filterBank.prepare (sampleRate, preparedBlockSize, maxRegions);
+        filterBank.prepare (sampleRate, preparedBlockSize, maxRegions, stereo ? 2 : 1);
         filterBank.setApplyPan (false);
         setDryLatency (0);
         activeFftOrder.store (order);   // the view keeps the size the combo shows
@@ -386,7 +403,7 @@ void DedeAudioProcessor::setDryLatency (int latency)
 
 void DedeAudioProcessor::configureSpectralEngine (int order)
 {
-    splitter.prepare (sampleRate, preparedBlockSize, maxRegions, order);
+    splitter.prepare (sampleRate, preparedBlockSize, maxRegions, order, stereoBands.load() ? 2 : 1);
 
     // Each band leaves the splitter mono (gain applied, no pan) so the degrade
     // chain treats both sides alike; the pan is applied after it.
@@ -408,7 +425,7 @@ void DedeAudioProcessor::configureSpectralEngine (int order)
 void DedeAudioProcessor::parameterChanged (const juce::String& parameterID, float)
 {
     // Can come from any thread, the audio thread included: only schedule.
-    if (parameterID == ids::fftSize || parameterID == ids::engine)
+    if (parameterID == ids::fftSize || parameterID == ids::engine || parameterID == ids::bandMode)
         triggerAsyncUpdate();
 }
 
@@ -421,7 +438,8 @@ void DedeAudioProcessor::handleAsyncUpdate()
 
     const bool live = requestedLiveEngine();
     const int order = requestedFftOrder();
-    const bool engineChanged = live != liveEngine.load();
+    const bool stereo = requestedStereoBands();
+    const bool engineChanged = live != liveEngine.load() || stereo != stereoBands.load();
 
     // The FFT size only matters to the spectral engine; in live mode it is
     // applied when switching back.
@@ -436,7 +454,7 @@ void DedeAudioProcessor::handleAsyncUpdate()
     // one window). The GUI reads the splitters from this same thread.
     suspendProcessing (true);
     if (engineChanged)
-        configureEngine (live, order, true);
+        configureEngine (live, order, stereo, true);
     else
         configureSpectralEngine (order);
     suspendProcessing (false);
@@ -463,6 +481,8 @@ void DedeAudioProcessor::cacheParameterPointers()
     pGateRelease = raw (ids::gateRelease);
     pFftSize  = raw (ids::fftSize);
     pEngine   = raw (ids::engine);
+    pBandMode = raw (ids::bandMode);
+    pPanLaw   = raw (ids::panLaw);
 
     for (int i = 0; i < maxRegions; ++i)
     {
@@ -515,7 +535,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     sampleRate = newSampleRate;
     preparedBlockSize = samplesPerBlock;
 
-    configureEngine (requestedLiveEngine(), requestedFftOrder(), false);
+    configureEngine (requestedLiveEngine(), requestedFftOrder(), requestedStereoBands(), false);
 
     for (auto& d : delays)
         d.prepare (sampleRate, maxDelaySeconds);
@@ -533,7 +553,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
     meterBuffer.clear();
     directBuffer.setSize (2, samplesPerBlock, false, false, true);
     directBuffer.clear();
-    bandBuffer.setSize (1, samplesPerBlock, false, false, true);
+    bandBuffer.setSize (2, samplesPerBlock, false, false, true);
     panBuffer.setSize (2, samplesPerBlock, false, false, true);
     bandBuffer.clear();
     panBuffer.clear();
@@ -562,12 +582,9 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
         regionDryGain[i].reset (sampleRate, 0.02);
         regionDryGain[i].setCurrentAndTargetValue (regionDryLevel (i));
 
-        float left = 0.0f, right = 0.0f;
-        panGains (i, left, right);
-        panL[i].reset (sampleRate, 0.02);
-        panR[i].reset (sampleRate, 0.02);
-        panL[i].setCurrentAndTargetValue (left);
-        panR[i].setCurrentAndTargetValue (right);
+        for (auto& g : pan[i])
+            g.reset (sampleRate, 0.02);
+        snapPan (i);
 
         auto& d = degrade[i];
         for (int ch = 0; ch < 2; ++ch)
@@ -726,14 +743,45 @@ float DedeAudioProcessor::regionDryLevel (int slot) const
     return db <= minFeedbackDb ? 0.0f : juce::Decibels::decibelsToGain (db);
 }
 
-void DedeAudioProcessor::panGains (int slot, float& left, float& right) const
+void DedeAudioProcessor::panMatrix (int slot, float (&m)[4]) const
 {
-    // Constant power, as the splitter did before the pan moved here: sweeping
-    // a region across the image keeps its loudness.
-    const float theta = (juce::jlimit (-1.0f, 1.0f, regions[slot].pan->load()) + 1.0f)
-                            * juce::MathConstants<float>::pi * 0.25f;
-    left  = std::cos (theta);
-    right = std::sin (theta);
+    const float p = juce::jlimit (-1.0f, 1.0f, regions[slot].pan->load());
+    m[panLL] = m[panRL] = m[panLR] = m[panRR] = 0.0f;
+
+    // A mono band (fed to both inputs of the matrix): constant power, so
+    // sweeping a region across the image keeps its loudness.
+    if (! stereoBands.load())
+    {
+        const float theta = (p + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+        m[panLL] = std::cos (theta);
+        m[panRR] = std::sin (theta);
+        return;
+    }
+
+    // A stereo band: centred, it is left as it is. Moving away from a side
+    // turns that side down (cos of up to a quarter turn); a stereo pan also
+    // folds it into the other side (sin), so its content is not lost.
+    const float theta = std::abs (p) * juce::MathConstants<float>::pi * 0.5f;
+    const bool fold = juce::roundToInt (pPanLaw->load()) == stereoPanIndex;
+    m[panLL] = m[panRR] = 1.0f;
+    if (p > 0.0f)
+    {
+        m[panLL] = std::cos (theta);
+        m[panLR] = fold ? std::sin (theta) : 0.0f;
+    }
+    else if (p < 0.0f)
+    {
+        m[panRR] = std::cos (theta);
+        m[panRL] = fold ? std::sin (theta) : 0.0f;
+    }
+}
+
+void DedeAudioProcessor::snapPan (int slot)
+{
+    float m[4];
+    panMatrix (slot, m);
+    for (int k = 0; k < 4; ++k)
+        pan[slot][k].setCurrentAndTargetValue (m[k]);
 }
 
 bool DedeAudioProcessor::anySolo() const noexcept
@@ -761,10 +809,7 @@ void DedeAudioProcessor::resetRegion (int slot)
 
     // Levels and pan start where the new region's parameters are, rather than
     // gliding from wherever the previous one left them.
-    float left = 0.0f, right = 0.0f;
-    panGains (slot, left, right);
-    panL[slot].setCurrentAndTargetValue (left);
-    panR[slot].setCurrentAndTargetValue (right);
+    snapPan (slot);
     delayGain[slot].setCurrentAndTargetValue (delayLevel (slot));
     regionDryGain[slot].setCurrentAndTargetValue (regionDryLevel (slot));
     sendGain[slot].setCurrentAndTargetValue (sendLevel (slot));
@@ -898,11 +943,26 @@ void DedeAudioProcessor::degradeFrame (int slot, DegradePosition position,
         // makes it quieter as the drive goes up. The level matcher brings
         // the result back to the RMS before the saturator, measured (200 ms
         // followers), which holds at every level.
+        //
+        // In stereo the two sides are linked, so the image does not move with
+        // the level: both supply rails sag with the louder side, and one
+        // auto-gain follows both sides' power.
         const float g = d.satDrive.getNextValue();
-        for (int ch = 0; ch < numChannels; ++ch)
+        if (numChannels == 1)
         {
-            d.sat[ch].setDriveGain (g);
-            frame[ch] = d.satLevel[ch].process (frame[ch], d.sat[ch].processSample (frame[ch]) / g);
+            d.sat[0].setDriveGain (g);
+            frame[0] = d.satLevel[0].process (frame[0], d.sat[0].processSample (frame[0]) / g);
+        }
+        else
+        {
+            const float reference[2] { frame[0], frame[1] };
+            const float demand = std::abs (frame[0]) > std::abs (frame[1]) ? frame[0] : frame[1];
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                d.sat[ch].setDriveGain (g);
+                frame[ch] = d.sat[ch].processSample (frame[ch], demand) / g;
+            }
+            d.satLevel[0].processFrame (reference, frame, 2);
         }
     }
 
@@ -965,17 +1025,33 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 {
     const int numOut = getTotalNumOutputChannels();
 
-    // The band splitter and the spectrum view both work on the mono sum, so
-    // the gate thresholds the user draws on the trace are the ones the DSP
-    // compares against.
+    // The spectrum view shows the mono sum, and every decision in the
+    // splitters (gates, ceilings, the spectral effects' analysis) is taken on
+    // that same sum, so the lines drawn on the trace mean what they look
+    // like. With stereo bands the splitters get both channels and keep them;
+    // with mono bands they get the sum itself.
     buildMonoInput (buffer, startSample, numSamples);
     inputTap.push (monoBuffer.getReadPointer (0), numSamples);
 
     const bool live = liveEngine.load();
-    if (live)
-        filterBank.process (monoBuffer.getReadPointer (0), numSamples);
+    const bool stereo = stereoBands.load();
+    const float* inL = buffer.getReadPointer (0, startSample);
+    const float* inR = buffer.getReadPointer (juce::jmin (1, buffer.getNumChannels() - 1), startSample);
+
+    if (stereo)
+    {
+        if (live)
+            filterBank.process (inL, inR, numSamples);
+        else
+            splitter.process (inL, inR, numSamples);
+    }
     else
-        splitter.process (monoBuffer.getReadPointer (0), numSamples);
+    {
+        if (live)
+            filterBank.process (monoBuffer.getReadPointer (0), numSamples);
+        else
+            splitter.process (monoBuffer.getReadPointer (0), numSamples);
+    }
 
     // Each region's band goes through its own stereo delay, and the delay
     // outputs are what the wet bus carries. The region's own band, undelayed,
@@ -1019,29 +1095,46 @@ void DedeAudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
 
         updateDelay (i);
 
-        // Band (mono, gain applied) -> degrade -> pan -> the region's delay.
-        float* band = bandBuffer.getWritePointer (0);
-        juce::FloatVectorOperations::copy (band, live ? filterBank.getBandOutput (i, 0)
-                                                      : splitter.getBandOutput (i, 0),
-                                           numSamples);
-        // The degrade stages placed before the delay work on the mono band,
-        // so the region's Dry hears them too.
+        // Band (gain applied; mono, or stereo) -> degrade -> pan -> the
+        // region's delay.
+        const int bandChannels = stereo ? 2 : 1;
+        float* bandL = bandBuffer.getWritePointer (0);
+        float* bandR = bandBuffer.getWritePointer (1);
+        for (int ch = 0; ch < bandChannels; ++ch)
+            juce::FloatVectorOperations::copy (ch == 0 ? bandL : bandR,
+                                               live ? filterBank.getBandOutput (i, ch)
+                                                    : splitter.getBandOutput (i, ch),
+                                               numSamples);
+
+        // The degrade stages placed before the delay work on the band, so the
+        // region's Dry hears them too.
         beginDegradeBlock (i);
         if (hasDegradeAt (i, DegradePosition::before))
             for (int s = 0; s < numSamples; ++s)
-                degradeFrame (i, DegradePosition::before, band + s, 1);
+            {
+                float frame[2] { bandL[s], stereo ? bandR[s] : 0.0f };
+                degradeFrame (i, DegradePosition::before, frame, bandChannels);
+                bandL[s] = frame[0];
+                if (stereo)
+                    bandR[s] = frame[1];
+            }
 
-        float left = 0.0f, right = 0.0f;
-        panGains (i, left, right);
-        panL[i].setTargetValue (left);
-        panR[i].setTargetValue (right);
+        // The pan as a 2 x 2 matrix: a mono band feeds both of its inputs.
+        float m[4];
+        panMatrix (i, m);
+        for (int k = 0; k < 4; ++k)
+            pan[i][k].setTargetValue (m[k]);
 
+        const float* srcR = stereo ? bandR : bandL;
         float* pl = panBuffer.getWritePointer (0);
         float* pr = panBuffer.getWritePointer (1);
         for (int s = 0; s < numSamples; ++s)
         {
-            pl[s] = band[s] * panL[i].getNextValue();
-            pr[s] = band[s] * panR[i].getNextValue();
+            const float a = bandL[s], b = srcR[s];
+            const float ll = pan[i][panLL].getNextValue(), rl = pan[i][panRL].getNextValue();
+            const float lr = pan[i][panLR].getNextValue(), rr = pan[i][panRR].getNextValue();
+            pl[s] = a * ll + b * rl;
+            pr[s] = a * lr + b * rr;
         }
 
         // Stages in the loop act on what enters the delay lines: the first

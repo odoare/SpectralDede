@@ -65,9 +65,10 @@ namespace
         "delays, the reverb return and the output trim, then the output meter "
         "(RMS bars, peak markers held for a second, red over 0 dBFS).\n\n"
         "The gear button opens the global controls: the shared reverb (room, "
-        "damping, width), the engine (Spectral, or Live for zero latency) and "
-        "its FFT size, and the gate's attack, release and knee, shared by every "
-        "region. Its own help button explains each.";
+        "damping, width), the engine (Spectral, or Live for zero latency), "
+        "stereo or mono bands and the pan law, the FFT size, and the gate's "
+        "attack, release and knee, shared by every region. Its own help button "
+        "explains each.";
 }
 
 //==============================================================================

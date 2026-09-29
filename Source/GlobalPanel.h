@@ -8,8 +8,10 @@
       - Reverb: room, damping and width of the shared reverb (its return
         level is with the other levels, in the left column).
       - Engine: Spectral (the STFT splitter) or Live (a filter bank, no
-        latency), and the spectral engine's FFT size, with what the choice
-        comes to (latency, bin width and gate step, or what Live gives up).
+        latency); stereo or mono bands, and for stereo ones the pan law
+        (balance or stereo pan); and the spectral engine's FFT size, with
+        what the choice comes to (latency, bin width and gate step, or what
+        Live gives up).
       - Gate: attack, release and knee, shared by every region.
 
     All of them are ordinary parameters, saved with the session and recalled
@@ -54,15 +56,16 @@ private:
 
     fxme::FxmeSlider roomKnob, dampKnob, widthKnob;
 
-    juce::ComboBox engineBox, fftSizeBox;
-    std::unique_ptr<ComboBoxAttachment> engineAttachment, fftSizeAttachment;
+    juce::ComboBox engineBox, bandsBox, panLawBox, fftSizeBox;
+    std::unique_ptr<ComboBoxAttachment> engineAttachment, bandsAttachment, panLawAttachment,
+                                        fftSizeAttachment;
 
     fxme::FxmeSlider attackKnob, releaseKnob, kneeKnob;
     fxme::InfoButton infoButton;
 
     juce::StringArray readout;
-    juce::Rectangle<int> titleArea, reverbHeading, engineHeading, engineLabel, fftLabel,
-                         readoutArea, gateHeading;
+    juce::Rectangle<int> titleArea, reverbHeading, engineHeading, engineLabel, bandsLabel,
+                         panLawLabel, fftLabel, readoutArea, gateHeading;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalPanel)
 };

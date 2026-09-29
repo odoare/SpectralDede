@@ -61,6 +61,8 @@ namespace ids
     inline constexpr const char* gateRelease = "gateRel";     // ms, a bin closing
     inline constexpr const char* fftSize    = "fftSize";      // choice, see fftSizeNames
     inline constexpr const char* engine     = "engine";       // choice, see engineNames
+    inline constexpr const char* bandMode   = "bands";        // choice, see bandModeNames
+    inline constexpr const char* panLaw     = "panlaw";       // choice, see panLawNames
 
     // Per-region suffixes (see the file header for the naming scheme).
     inline constexpr const char* rgOn    = "on";      // region slot in use
@@ -199,6 +201,20 @@ inline constexpr int splitterFftOrder = 11;
     gates, soft edges, no spectral effects, no latency). */
 inline const juce::StringArray engineNames { "Spectral", "Live" };
 inline constexpr int liveEngineIndex = 1;
+
+/** The `bands` choice. Stereo: each region keeps the input's left and right,
+    every decision (gates, ceilings, the spectral effects' analysis) taken on
+    their sum; about twice the splitter's CPU. Mono: the input is summed
+    first, as the regions always were. */
+inline const juce::StringArray bandModeNames { "Stereo", "Mono" };
+inline constexpr int monoBandsIndex = 1;
+
+/** The `panlaw` choice, for stereo bands (a mono band is always panned,
+    constant power). Balance: the side the region moves away from is turned
+    down. Stereo pan: that side is folded into the other, so a region panned
+    hard to one side still carries both channels' content there. */
+inline const juce::StringArray panLawNames { "Balance", "Stereo pan" };
+inline constexpr int stereoPanIndex = 1;
 
 inline const juce::StringArray fftSizeNames { "1024", "2048", "4096", "8192", "16384" };
 inline constexpr int minChoiceFftOrder = 10;

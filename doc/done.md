@@ -4,6 +4,46 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Stereo bands, detected in mono (2026-09-29)
+
+The regions no longer have to be mono. A global **Bands** choice (Stereo, the
+default, or Mono as before) and a **Pan law** for stereo bands (Balance, the
+default, or Stereo pan) are in the Engine section of the global controls.
+
+- **Detection stays mono.** Every decision is taken on the sum of the two
+  channels, the signal the view shows: per-bin gates and ceilings (the
+  splitter forms the sum's spectrum as the average of the two transforms, no
+  extra FFT), the live band gate, and the spectral effects' analysis. The
+  gains found are applied to both sides.
+- **Spectral effects in stereo:** peaks are found on the sum of both
+  channels' magnitudes (so one-sided content counts), frequencies are tracked
+  on the sum, and each side is resynthesised with its own magnitudes and its
+  own phase offset to the sum; freeze and blur keep both. A pure side signal
+  (cancelling in the sum) takes the left channel as its phase reference.
+- **Degrade:** the stages before the delay are stereo too; the saturator's
+  rails and its auto-gain are linked across the two sides.
+- **Pan:** a 2 x 2 matrix per region. Mono bands: constant power as before.
+  Stereo: centred is unity on both sides (a centred mono source is 3 dB
+  louder than with mono bands); Balance turns the far side down, Stereo pan
+  folds it into the near one.
+- **FxmeTools:** stereo input for `SpectralBandSplitter` and
+  `FilterBankSplitter` (`prepare (..., numInputChannels)`,
+  `process (left, right, n)`), `SpectralBandProcessor::processBandStereo`
+  (with `SpectralBandEffects` overriding it), `BandGate::processLinked`,
+  `LevelMatcher::processFrame`, `Saturator::processSample (x, railDemand)`.
+  The mono paths are unchanged: the mono splitter matches the previous one
+  to float rounding and the mono effects bit for bit. New core test
+  `CoreStereoBandsTests`: identical channels give exactly the mono result
+  (both engines, and through a pitch shift); with one channel only the gate
+  compares the sum; a source 6 dB louder on the left comes out of a pitch
+  shift 6.02 dB louder on the left, the sides still 0.94 correlated; the
+  balance law.
+- **CPU:** stereo about doubles the splitter (8 regions: Spectral 1.35 % to
+  2.55 % of a core, Live 1.40 % to 2.85 %).
+- **Presets:** `bands` and `panlaw` added. The four sound presets are set to
+  Mono, so they sound exactly as designed; Init is Stereo. Re-save them in
+  Stereo once they have been listened to that way.
+
 ## Degrade positions, Shift, and 13b (shimmer); keep in band removed (2026-09-29)
 
 - **Positions.** Each degrade stage (saturation, bit-crush, downsample, and

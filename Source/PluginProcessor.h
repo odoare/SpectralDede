@@ -79,6 +79,10 @@ public:
         applied). The spectrum view follows it; any thread. */
     int getFftOrder() const noexcept                         { return activeFftOrder.load(); }
 
+    /** True while the bands are stereo (the `bands` parameter, once
+        applied). Any thread. */
+    bool areBandsStereo() const noexcept                     { return stereoBands.load(); }
+
     /** True while the live (filter bank) engine runs. Any thread. */
     bool isLiveEngine() const noexcept                       { return liveEngine.load(); }
 
@@ -172,11 +176,14 @@ private:
     /** Whether the `engine` parameter asks for the live (filter bank) one. */
     bool requestedLiveEngine() const;
 
+    /** Whether the `bands` parameter asks for stereo bands. */
+    bool requestedStereoBands() const;
+
     /** Prepares the engine asked for (with configureSpectralEngine for the
         spectral one) and reports the latency; resets every region too when
         switching while running. Message thread, with processing suspended or
         not yet started. */
-    void configureEngine (bool live, int order, bool resetRegions);
+    void configureEngine (bool live, int order, bool stereo, bool resetRegions);
 
     /** Delays the dry path by `latency` samples and reports it to the host. */
     void setDryLatency (int latency);
@@ -191,6 +198,7 @@ private:
 
     std::atomic<int> activeFftOrder { dede::splitterFftOrder };
     std::atomic<bool> liveEngine { false };
+    std::atomic<bool> stereoBands { true };
     int dryLatency = 0;
     int preparedBlockSize = 0;
 
@@ -214,6 +222,8 @@ private:
     std::atomic<float>* pGateRelease = nullptr;
     std::atomic<float>* pFftSize  = nullptr;
     std::atomic<float>* pEngine   = nullptr;
+    std::atomic<float>* pBandMode = nullptr;
+    std::atomic<float>* pPanLaw   = nullptr;
 
     /** Mono-sums the input into monoBuffer: what the spectrum view shows and
         what the band splitter is fed are then one and the same signal, which
@@ -245,8 +255,16 @@ private:
         a linear gain, with the bottom of the range read as silence. */
     float regionDryLevel (int slot) const;
 
-    /** One region's constant-power pan as a pair of gains. */
-    void panGains (int slot, float& left, float& right) const;
+    /** Indices into a region's pan matrix: left into left, right into left,
+        left into right, right into right. */
+    enum { panLL = 0, panRL, panLR, panRR };
+
+    /** One region's pan as a 2 x 2 matrix: constant power for a mono band,
+        balance or stereo pan (the `panlaw` parameter) for a stereo one. */
+    void panMatrix (int slot, float (&m)[4]) const;
+
+    /** Snaps a region's pan smoothers to its matrix, no glide. */
+    void snapPan (int slot);
 
     /** Reads one region's degrade parameters for the block: which stages
         are on and where, their settings, and resets a stage that has just
@@ -347,7 +365,7 @@ private:
 
     /** The pan, applied after the degrade chain (the splitter's own pan is
         off), smoothed like the splitter smoothed it. */
-    juce::SmoothedValue<float> panL[dede::maxRegions], panR[dede::maxRegions];
+    juce::SmoothedValue<float> pan[dede::maxRegions][4];   // see panMatrix()
 
     std::atomic<double> currentBpm { 120.0 };
     std::atomic<float>  lastNoteHz { 0.0f };

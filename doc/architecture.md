@@ -48,8 +48,30 @@ processed band, turn the global Dry down (which also removes everything outside
 the regions). The regions' Dry outputs are on a bus of their own, scaled only
 by the output trim, not by the global Dry nor by Delays.
 
-Each region leaves the splitter mono, with its gain applied but not its pan
-(`setApplyPan (false)`), and is panned (constant power) before its delay.
+**Stereo or mono bands** (the `bands` parameter, global controls; Stereo by
+default). In Stereo the splitter (either engine) gets both input channels
+and each region keeps its left and right, but every decision is taken on
+their sum, the mono signal the spectrum view shows: each bin's gate and
+ceiling (or, live, the band gate) compare the sum's level and apply one gain
+to both sides, and the spectral effects analyse the sum and resynthesise each
+side with its own magnitudes and its own phase offset to the sum. So a region
+keeps its image, and the lines on the view mean what they look like. It costs
+about twice the splitter's CPU (8 regions: about 2.5 % of a core against 1.35
+in Spectral). In Mono the input is summed first, as regions always were.
+Switching goes through the engine's re-prepare path and resets every region.
+
+Each region leaves the splitter with its gain applied but not its pan
+(`setApplyPan (false)`), and is panned before its delay, as a 2 x 2 matrix
+(`panMatrix`): a mono band is panned at constant power (centred: -3 dB each
+side); a stereo band is left as it is when centred, and moving it towards a
+side follows the `panlaw` parameter: **Balance** turns the other side down
+(cos of up to a quarter turn), **Stereo pan** also folds it into the side it
+moves to (sin), so a region panned hard keeps both channels' content. A
+centred mono source therefore comes out 3 dB louder with stereo bands than
+with mono ones. In stereo the saturator is linked: both rails sag with the
+louder side (`Saturator::processSample (x, railDemand)`) and one auto-gain
+follows both sides' power (`LevelMatcher::processFrame`), so the image does
+not move with the level.
 
 **The degrade stages** are saturation, bit-crush, downsample and **Shift** (a
 time-domain pitch shift), each with its own switch (skipped when off) and its

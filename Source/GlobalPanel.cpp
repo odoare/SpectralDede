@@ -45,6 +45,18 @@ namespace
         "Dry colours the sound a little near its edges, and the Spectral tab "
         "(pitch, freeze, blur) has no effect. Switching resets every region "
         "(delay tails included) and changes the latency.\n\n"
+        "Bands: Stereo keeps each region's left and right, as they come in; "
+        "every decision (gates, ceilings, the spectral effects' analysis) is "
+        "still taken on their sum, the signal the spectrum shows, and applied "
+        "to both sides alike, so a region keeps its image. It costs about "
+        "twice the CPU of Mono, which sums the input first (as regions always "
+        "did) and pans each region as a mono source. A centred region in "
+        "Stereo comes out 3 dB louder than in Mono (it is not panned to the "
+        "middle, it stays both sides at full level). Switching resets every "
+        "region.\n"
+        "Pan law (stereo bands): Balance turns down the side a region moves "
+        "away from; Stereo pan folds that side into the other, so a region "
+        "panned hard keeps both channels' content on one side.\n\n"
         "The FFT size is the window of the spectral splitter: the regions, "
         "their gates and ceilings, and the spectral effects all work on it, "
         "and the spectrum view measures with it.\n"
@@ -104,6 +116,18 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     engineAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
                                                              ids::engine, engineBox);
 
+    bandsBox.addItemList (bandModeNames, 1);
+    theme::styleCombo (bandsBox, theme::accent);
+    addAndMakeVisible (bandsBox);
+    bandsAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
+                                                            ids::bandMode, bandsBox);
+
+    panLawBox.addItemList (panLawNames, 1);
+    theme::styleCombo (panLawBox, theme::accent);
+    addAndMakeVisible (panLawBox);
+    panLawAttachment = std::make_unique<ComboBoxAttachment> (processor.getAPVTS(),
+                                                             ids::panLaw, panLawBox);
+
     fftSizeBox.addItemList (fftSizeNames, 1);
     theme::styleCombo (fftSizeBox, theme::accent);
     addAndMakeVisible (fftSizeBox);
@@ -124,7 +148,7 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     const int width  = knobsPerRow * knobWidth + 2 * panelMargin;
     const int height = panelMargin + titleHeight + sectionGap
                      + headingHeight + knobHeight + sectionGap
-                     + headingHeight + 2 * rowHeight + 2 * readoutLine + sectionGap
+                     + headingHeight + 4 * rowHeight + 2 * readoutLine + sectionGap
                      + headingHeight + knobHeight + panelMargin;
     setSize (width, height);
 }
@@ -148,14 +172,18 @@ juce::StringArray GlobalPanel::engineText() const
 
 void GlobalPanel::timerCallback()
 {
-    // The FFT size only means something to the spectral engine.
-    const bool live = processor.isLiveEngine();
-    if (fftSizeBox.isEnabled() == live)
+    // The FFT size only means something to the spectral engine, the pan law
+    // only to stereo bands.
+    const auto enableRow = [this] (juce::ComboBox& box, juce::Rectangle<int> label, bool on)
     {
-        fftSizeBox.setEnabled (! live);
-        fftSizeBox.setAlpha (live ? 0.45f : 1.0f);
-        repaint (fftLabel);
-    }
+        if (box.isEnabled() == on)
+            return;
+        box.setEnabled (on);
+        box.setAlpha (on ? 1.0f : 0.45f);
+        repaint (label);
+    };
+    enableRow (fftSizeBox, fftLabel, ! processor.isLiveEngine());
+    enableRow (panLawBox, panLawLabel, processor.areBandsStereo());
 
     const auto text = engineText();
     if (text == readout)
@@ -184,6 +212,9 @@ void GlobalPanel::paint (juce::Graphics& g)
     g.setColour (theme::dimText);
     g.setFont (juce::Font (juce::FontOptions (12.0f)));
     g.drawText ("Engine", engineLabel, juce::Justification::centredLeft);
+    g.drawText ("Bands",  bandsLabel,  juce::Justification::centredLeft);
+    g.setColour (theme::dimText.withAlpha (panLawBox.isEnabled() ? 1.0f : 0.45f));
+    g.drawText ("Pan law", panLawLabel, juce::Justification::centredLeft);
     g.setColour (theme::dimText.withAlpha (fftSizeBox.isEnabled() ? 1.0f : 0.45f));
     g.drawText ("FFT size", fftLabel, juce::Justification::centredLeft);
     g.setColour (theme::dimText);
@@ -214,12 +245,16 @@ void GlobalPanel::resized()
     area.removeFromTop (sectionGap);
 
     engineHeading = area.removeFromTop (headingHeight);
-    auto row = area.removeFromTop (rowHeight);
-    engineLabel = row.removeFromLeft (70);
-    engineBox.setBounds (row.removeFromLeft (100).withSizeKeepingCentre (100, 20));
-    row = area.removeFromTop (rowHeight);
-    fftLabel = row.removeFromLeft (70);
-    fftSizeBox.setBounds (row.removeFromLeft (100).withSizeKeepingCentre (100, 20));
+    const auto comboRow = [&area] (juce::Rectangle<int>& label, juce::ComboBox& box)
+    {
+        auto row = area.removeFromTop (rowHeight);
+        label = row.removeFromLeft (70);
+        box.setBounds (row.removeFromLeft (110).withSizeKeepingCentre (110, 20));
+    };
+    comboRow (engineLabel, engineBox);
+    comboRow (bandsLabel,  bandsBox);
+    comboRow (panLawLabel, panLawBox);
+    comboRow (fftLabel,    fftSizeBox);
     readoutArea = area.removeFromTop (2 * readoutLine);
     area.removeFromTop (sectionGap);
 
