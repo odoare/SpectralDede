@@ -46,16 +46,22 @@
   <PARAM id="rg0_bits" value="8"/>
   <PARAM id="rg0_dson" value="0"/>
   <PARAM id="rg0_dsf" value="4"/>
-  <PARAM id="rg0_shfon" value="0"/>
-  <PARAM id="rg0_shfst" value="12"/>
+  <PARAM id="rg0_trnon" value="0"/>
+  <PARAM id="rg0_trnst" value="12"/>
   <PARAM id="rg0_satpos" value="0"/>
   <PARAM id="rg0_crshpos" value="0"/>
   <PARAM id="rg0_dspos" value="0"/>
-  <PARAM id="rg0_shfpos" value="0"/>
+  <PARAM id="rg0_trnpos" value="0"/>
+  <PARAM id="rg0_fshon" value="0"/>
+  <PARAM id="rg0_fshhz" value="30"/>
+  <PARAM id="rg0_fshpos" value="0"/>
   <PARAM id="rg0_pshon" value="0"/>
   <PARAM id="rg0_pshst" value="0"/>
   <PARAM id="rg0_frzon" value="0"/>
   <PARAM id="rg0_frzmod" value="0"/>
+  <PARAM id="rg0_frztrg" value="0"/>
+  <PARAM id="rg0_frzrate" value="10"/>
+  <PARAM id="rg0_frzwid" value="0"/>
   <PARAM id="rg0_blron" value="0"/>
   <PARAM id="rg0_blrms" value="300"/>
   <PARAM id="rg1_on" value="0"/>
@@ -92,16 +98,22 @@
   <PARAM id="rg1_bits" value="8"/>
   <PARAM id="rg1_dson" value="0"/>
   <PARAM id="rg1_dsf" value="4"/>
-  <PARAM id="rg1_shfon" value="0"/>
-  <PARAM id="rg1_shfst" value="12"/>
+  <PARAM id="rg1_trnon" value="0"/>
+  <PARAM id="rg1_trnst" value="12"/>
   <PARAM id="rg1_satpos" value="0"/>
   <PARAM id="rg1_crshpos" value="0"/>
   <PARAM id="rg1_dspos" value="0"/>
-  <PARAM id="rg1_shfpos" value="0"/>
+  <PARAM id="rg1_trnpos" value="0"/>
+  <PARAM id="rg1_fshon" value="0"/>
+  <PARAM id="rg1_fshhz" value="30"/>
+  <PARAM id="rg1_fshpos" value="0"/>
   <PARAM id="rg1_pshon" value="0"/>
   <PARAM id="rg1_pshst" value="0"/>
   <PARAM id="rg1_frzon" value="0"/>
   <PARAM id="rg1_frzmod" value="0"/>
+  <PARAM id="rg1_frztrg" value="0"/>
+  <PARAM id="rg1_frzrate" value="10"/>
+  <PARAM id="rg1_frzwid" value="0"/>
   <PARAM id="rg1_blron" value="0"/>
   <PARAM id="rg1_blrms" value="300"/>
   <PARAM id="rg2_on" value="0"/>
@@ -138,16 +150,22 @@
   <PARAM id="rg2_bits" value="8"/>
   <PARAM id="rg2_dson" value="0"/>
   <PARAM id="rg2_dsf" value="4"/>
-  <PARAM id="rg2_shfon" value="0"/>
-  <PARAM id="rg2_shfst" value="12"/>
+  <PARAM id="rg2_trnon" value="0"/>
+  <PARAM id="rg2_trnst" value="12"/>
   <PARAM id="rg2_satpos" value="0"/>
   <PARAM id="rg2_crshpos" value="0"/>
   <PARAM id="rg2_dspos" value="0"/>
-  <PARAM id="rg2_shfpos" value="0"/>
+  <PARAM id="rg2_trnpos" value="0"/>
+  <PARAM id="rg2_fshon" value="0"/>
+  <PARAM id="rg2_fshhz" value="30"/>
+  <PARAM id="rg2_fshpos" value="0"/>
   <PARAM id="rg2_pshon" value="0"/>
   <PARAM id="rg2_pshst" value="0"/>
   <PARAM id="rg2_frzon" value="0"/>
   <PARAM id="rg2_frzmod" value="0"/>
+  <PARAM id="rg2_frztrg" value="0"/>
+  <PARAM id="rg2_frzrate" value="10"/>
+  <PARAM id="rg2_frzwid" value="0"/>
   <PARAM id="rg2_blron" value="0"/>
   <PARAM id="rg2_blrms" value="300"/>
   <PARAM id="rg3_on" value="0"/>
@@ -184,16 +202,22 @@
   <PARAM id="rg3_bits" value="8"/>
   <PARAM id="rg3_dson" value="0"/>
   <PARAM id="rg3_dsf" value="4"/>
-  <PARAM id="rg3_shfon" value="0"/>
-  <PARAM id="rg3_shfst" value="12"/>
+  <PARAM id="rg3_trnon" value="0"/>
+  <PARAM id="rg3_trnst" value="12"/>
   <PARAM id="rg3_satpos" value="0"/>
   <PARAM id="rg3_crshpos" value="0"/>
   <PARAM id="rg3_dspos" value="0"/>
-  <PARAM id="rg3_shfpos" value="0"/>
+  <PARAM id="rg3_trnpos" value="0"/>
+  <PARAM id="rg3_fshon" value="0"/>
+  <PARAM id="rg3_fshhz" value="30"/>
+  <PARAM id="rg3_fshpos" value="0"/>
   <PARAM id="rg3_pshon" value="0"/>
   <PARAM id="rg3_pshst" value="0"/>
   <PARAM id="rg3_frzon" value="0"/>
   <PARAM id="rg3_frzmod" value="0"/>
+  <PARAM id="rg3_frztrg" value="0"/>
+  <PARAM id="rg3_frzrate" value="10"/>
+  <PARAM id="rg3_frzwid" value="0"/>
   <PARAM id="rg3_blron" value="0"/>
   <PARAM id="rg3_blrms" value="300"/>
   <PARAM id="rg4_on" value="0"/>
@@ -230,16 +254,22 @@
   <PARAM id="rg4_bits" value="8"/>
   <PARAM id="rg4_dson" value="0"/>
   <PARAM id="rg4_dsf" value="4"/>
-  <PARAM id="rg4_shfon" value="0"/>
-  <PARAM id="rg4_shfst" value="12"/>
+  <PARAM id="rg4_trnon" value="0"/>
+  <PARAM id="rg4_trnst" value="12"/>
   <PARAM id="rg4_satpos" value="0"/>
   <PARAM id="rg4_crshpos" value="0"/>
   <PARAM id="rg4_dspos" value="0"/>
-  <PARAM id="rg4_shfpos" value="0"/>
+  <PARAM id="rg4_trnpos" value="0"/>
+  <PARAM id="rg4_fshon" value="0"/>
+  <PARAM id="rg4_fshhz" value="30"/>
+  <PARAM id="rg4_fshpos" value="0"/>
   <PARAM id="rg4_pshon" value="0"/>
   <PARAM id="rg4_pshst" value="0"/>
   <PARAM id="rg4_frzon" value="0"/>
   <PARAM id="rg4_frzmod" value="0"/>
+  <PARAM id="rg4_frztrg" value="0"/>
+  <PARAM id="rg4_frzrate" value="10"/>
+  <PARAM id="rg4_frzwid" value="0"/>
   <PARAM id="rg4_blron" value="0"/>
   <PARAM id="rg4_blrms" value="300"/>
   <PARAM id="rg5_on" value="0"/>
@@ -276,16 +306,22 @@
   <PARAM id="rg5_bits" value="8"/>
   <PARAM id="rg5_dson" value="0"/>
   <PARAM id="rg5_dsf" value="4"/>
-  <PARAM id="rg5_shfon" value="0"/>
-  <PARAM id="rg5_shfst" value="12"/>
+  <PARAM id="rg5_trnon" value="0"/>
+  <PARAM id="rg5_trnst" value="12"/>
   <PARAM id="rg5_satpos" value="0"/>
   <PARAM id="rg5_crshpos" value="0"/>
   <PARAM id="rg5_dspos" value="0"/>
-  <PARAM id="rg5_shfpos" value="0"/>
+  <PARAM id="rg5_trnpos" value="0"/>
+  <PARAM id="rg5_fshon" value="0"/>
+  <PARAM id="rg5_fshhz" value="30"/>
+  <PARAM id="rg5_fshpos" value="0"/>
   <PARAM id="rg5_pshon" value="0"/>
   <PARAM id="rg5_pshst" value="0"/>
   <PARAM id="rg5_frzon" value="0"/>
   <PARAM id="rg5_frzmod" value="0"/>
+  <PARAM id="rg5_frztrg" value="0"/>
+  <PARAM id="rg5_frzrate" value="10"/>
+  <PARAM id="rg5_frzwid" value="0"/>
   <PARAM id="rg5_blron" value="0"/>
   <PARAM id="rg5_blrms" value="300"/>
   <PARAM id="rg6_on" value="0"/>
@@ -322,16 +358,22 @@
   <PARAM id="rg6_bits" value="8"/>
   <PARAM id="rg6_dson" value="0"/>
   <PARAM id="rg6_dsf" value="4"/>
-  <PARAM id="rg6_shfon" value="0"/>
-  <PARAM id="rg6_shfst" value="12"/>
+  <PARAM id="rg6_trnon" value="0"/>
+  <PARAM id="rg6_trnst" value="12"/>
   <PARAM id="rg6_satpos" value="0"/>
   <PARAM id="rg6_crshpos" value="0"/>
   <PARAM id="rg6_dspos" value="0"/>
-  <PARAM id="rg6_shfpos" value="0"/>
+  <PARAM id="rg6_trnpos" value="0"/>
+  <PARAM id="rg6_fshon" value="0"/>
+  <PARAM id="rg6_fshhz" value="30"/>
+  <PARAM id="rg6_fshpos" value="0"/>
   <PARAM id="rg6_pshon" value="0"/>
   <PARAM id="rg6_pshst" value="0"/>
   <PARAM id="rg6_frzon" value="0"/>
   <PARAM id="rg6_frzmod" value="0"/>
+  <PARAM id="rg6_frztrg" value="0"/>
+  <PARAM id="rg6_frzrate" value="10"/>
+  <PARAM id="rg6_frzwid" value="0"/>
   <PARAM id="rg6_blron" value="0"/>
   <PARAM id="rg6_blrms" value="300"/>
   <PARAM id="rg7_on" value="0"/>
@@ -368,16 +410,22 @@
   <PARAM id="rg7_bits" value="8"/>
   <PARAM id="rg7_dson" value="0"/>
   <PARAM id="rg7_dsf" value="4"/>
-  <PARAM id="rg7_shfon" value="0"/>
-  <PARAM id="rg7_shfst" value="12"/>
+  <PARAM id="rg7_trnon" value="0"/>
+  <PARAM id="rg7_trnst" value="12"/>
   <PARAM id="rg7_satpos" value="0"/>
   <PARAM id="rg7_crshpos" value="0"/>
   <PARAM id="rg7_dspos" value="0"/>
-  <PARAM id="rg7_shfpos" value="0"/>
+  <PARAM id="rg7_trnpos" value="0"/>
+  <PARAM id="rg7_fshon" value="0"/>
+  <PARAM id="rg7_fshhz" value="30"/>
+  <PARAM id="rg7_fshpos" value="0"/>
   <PARAM id="rg7_pshon" value="0"/>
   <PARAM id="rg7_pshst" value="0"/>
   <PARAM id="rg7_frzon" value="0"/>
   <PARAM id="rg7_frzmod" value="0"/>
+  <PARAM id="rg7_frztrg" value="0"/>
+  <PARAM id="rg7_frzrate" value="10"/>
+  <PARAM id="rg7_frzwid" value="0"/>
   <PARAM id="rg7_blron" value="0"/>
   <PARAM id="rg7_blrms" value="300"/>
 </Parameters>

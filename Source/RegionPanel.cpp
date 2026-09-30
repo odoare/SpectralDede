@@ -292,12 +292,14 @@ class RegionPanel::StagesPage : public juce::Component,
                                 private juce::Timer
 {
 public:
-    /** One control of a stage: a knob, or a choice box when `choices` is set. */
+    /** One control of a stage: a knob, or a choice box when `choices` is set
+        (captioned with `label` above it). */
     struct Control
     {
         const char* suffix;
         juce::String label;
         const juce::StringArray* choices = nullptr;
+        const char* tooltip = nullptr;
     };
 
     /** One stage: its switch, its title, its controls, and optionally the
@@ -331,6 +333,8 @@ public:
                     auto box = std::make_unique<juce::ComboBox>();
                     box->addItemList (*c.choices, 1);
                     theme::styleCombo (*box, accentColour);
+                    if (c.tooltip != nullptr)
+                        box->setTooltip (c.tooltip);
                     addAndMakeVisible (*box);
                     stage->attachments.push_back (std::make_unique<ComboBoxAttachment> (
                         apvts, ids::region (slot, c.suffix), *box));
@@ -338,9 +342,12 @@ public:
                 }
                 else
                 {
-                    stage->controls.push_back (makeKnob (*this, processor, slot, c.suffix,
-                                                         c.label, accentColour));
+                    auto knob = makeKnob (*this, processor, slot, c.suffix, c.label, accentColour);
+                    if (c.tooltip != nullptr)
+                        knob->setTooltip (c.tooltip);
+                    stage->controls.push_back (std::move (knob));
                 }
+                stage->labels.push_back (c.label);
             }
 
             if (spec.positionSuffix != nullptr)
@@ -375,6 +382,20 @@ public:
         for (auto x : separators)
             g.fillRect (juce::Rectangle<float> ((float) x, (float) pagePadding + 4.0f,
                                                 1.0f, (float) getHeight() - pagePadding - 8.0f));
+
+        // A choice box's caption, above it (a knob draws its own label).
+        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        for (const auto& stage : stages)
+            for (size_t i = 0; i < stage->controls.size(); ++i)
+            {
+                const auto& c = *stage->controls[i];
+                if (dynamic_cast<const juce::ComboBox*> (&c) == nullptr || stage->labels[i].isEmpty())
+                    continue;
+
+                g.setColour (theme::dimText.withMultipliedAlpha (c.getAlpha()));
+                g.drawText (stage->labels[i], c.getBounds().translated (0, -16).withHeight (14),
+                            juce::Justification::centred);
+            }
     }
 
     void resized() override
@@ -428,6 +449,7 @@ private:
         const char* onSuffix = nullptr;
         std::unique_ptr<fxme::FxmeButton> onSwitch;
         std::vector<std::unique_ptr<juce::Component>> controls;
+        std::vector<juce::String> labels;   // one per control
         std::unique_ptr<juce::ComboBox> positionBox;
         std::vector<std::unique_ptr<ComboBoxAttachment>> attachments;
     };
@@ -442,16 +464,23 @@ private:
         if (getAlpha() != pageAlpha)
             setAlpha (pageAlpha);
 
+        bool captionsChanged = false;
         for (auto& stage : stages)
         {
             const float alpha = parameterValue (processor, slot, stage->onSuffix) > 0.5f ? 1.0f
                                                                                           : idleAlpha;
             for (auto& c : stage->controls)
                 if (c->getAlpha() != alpha)
+                {
                     c->setAlpha (alpha);
+                    captionsChanged = true;
+                }
             if (stage->positionBox != nullptr && stage->positionBox->getAlpha() != alpha)
                 stage->positionBox->setAlpha (alpha);
         }
+
+        if (captionsChanged)
+            repaint();
     }
 
     DedeAudioProcessor& processor;
@@ -509,19 +538,31 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     using Stage = StagesPage::Stage;
 
     // In signal order within a position: saturation, bit-crush, downsample,
-    // shift. Each chooses its own position: before, in or after the delay.
+    // transpose, freq shift. Each chooses its own position: before, in or after the delay.
     const std::vector<Stage> degrade {
         { ids::rgSatOn,   "Saturation", { { ids::rgSatModel,  "Model", &saturationModelNames },
                                           { ids::rgSatDrive,  "Drive" } }, ids::rgSatPos },
         { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } },  ids::rgCrushPos },
         { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } }, ids::rgDsPos },
-        { ids::rgShiftOn, "Shift",      { { ids::rgShiftSt,   "Semitones" } }, ids::rgShiftPos },
+        { ids::rgTransposeOn, "Transpose",  { { ids::rgTransposeSt,   "Semitones" } }, ids::rgTransposePos },
+        { ids::rgFreqShiftOn, "Freq shift", { { ids::rgFreqShiftHz, "Hz" } }, ids::rgFreqShiftPos },
     };
 
     // Inside the splitter's frame: freeze or blur, then pitch.
     const std::vector<Stage> spectralStages {
         { ids::rgPitchOn,  "Pitch",  { { ids::rgPitchSt,    "Semitones" } } },
-        { ids::rgFreezeOn, "Freeze", { { ids::rgFreezeMode, "Mode", &freezeModeNames } } },
+        { ids::rgFreezeOn, "Freeze", {
+            { ids::rgFreezeMode,  "Mode", &freezeModeNames,
+              "Tonal: held notes stay notes. Wash: a smooth, static texture" },
+            { ids::rgFreezeTrig,  "Trigger", &freezeTriggerNames,
+              "Manual: frozen while Freeze is on. Retrigger: captures again at every step "
+              "of the rate. On/off: frozen for one step, live for the next" },
+            { ids::rgFreezeRate,  "Rate", &freezeRateNames,
+              "Step of the Retrigger and On/off triggers, synced to the host tempo "
+              "(T: triplet, D: dotted)" },
+            { ids::rgFreezeWidth, "Width", nullptr,
+              "How far the frozen left and right channels drift apart in phase: "
+              "0 keeps the image, 100 % makes them independent. Stereo bands only" } } },
         { ids::rgBlurOn,   "Blur",   { { ids::rgBlurMs,     "Time" } } },
     };
 

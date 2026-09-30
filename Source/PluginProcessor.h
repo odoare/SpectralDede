@@ -26,6 +26,7 @@
 #include <JuceHeader.h>
 #include <FxmeTools/dsp/Reverb.h>   // not in the module umbrella: needs WDL
 #include "ParamIDs.h"
+#include <optional>
 
 //==============================================================================
 class DedeAudioProcessor : public juce::AudioProcessor,
@@ -159,17 +160,23 @@ private:
         std::atomic<float>* crushBits = nullptr;
         std::atomic<float>* dsOn      = nullptr;
         std::atomic<float>* dsFactor  = nullptr;
-        std::atomic<float>* shiftOn   = nullptr;
-        std::atomic<float>* shiftSt   = nullptr;
+        std::atomic<float>* transposeOn   = nullptr;
+        std::atomic<float>* transposeSt   = nullptr;
         std::atomic<float>* satPos    = nullptr;
         std::atomic<float>* crushPos  = nullptr;
         std::atomic<float>* dsPos     = nullptr;
-        std::atomic<float>* shiftPos  = nullptr;
+        std::atomic<float>* transposePos  = nullptr;
+        std::atomic<float>* freqShiftOn  = nullptr;
+        std::atomic<float>* freqShiftHz  = nullptr;
+        std::atomic<float>* freqShiftPos = nullptr;
 
         std::atomic<float>* pitchOn    = nullptr;
         std::atomic<float>* pitchSt    = nullptr;
         std::atomic<float>* freezeOn   = nullptr;
         std::atomic<float>* freezeMode = nullptr;
+        std::atomic<float>* freezeTrig = nullptr;
+        std::atomic<float>* freezeRate = nullptr;
+        std::atomic<float>* freezeWidth = nullptr;
         std::atomic<float>* blurOn     = nullptr;
         std::atomic<float>* blurMs     = nullptr;
     };
@@ -251,6 +258,15 @@ private:
     /** Copies the current region parameters into the splitter's bands. */
     void updateBands();
 
+    /** A region's freeze trigger (manual, retrigger, on/off). */
+    dede::FreezeTrigger freezeTrigger (int slot) const noexcept;
+
+    /** Applies the rhythmic freezes at song position `ppq` (in quarter
+        notes): gates the on/off ones, retriggers the others on a new step.
+        Returns how many samples until the next step boundary of any of them
+        (int max when none is rhythmic). Audio thread. */
+    int runFreezeClock (double ppq, double quartersPerSample);
+
     /** The whole wet path for at most one prepared block's worth of samples.
         processBlock chunks by this so a host that hands over more than the
         block size it promised cannot run past the scratch buffers. */
@@ -291,13 +307,13 @@ private:
 
     /** One frame (1 channel before the delay, 2 in the loop and after it)
         through the region's stages that sit at `position`, in their fixed
-        order: saturation, bit-crush, downsample, shift. */
+        order: saturation, bit-crush, downsample, transpose, freq shift. */
     void degradeFrame (int slot, dede::DegradePosition position, float* frame, int numChannels) noexcept;
 
     /** Clears one region's degrade state (every stage starts from rest). */
     void resetDegrade (int slot);
 
-    /** Shortest delay line time once a loop Shift's latency is taken off. */
+    /** Shortest delay line time once a loop Transpose's latency is taken off. */
     static constexpr float minLoopSeconds = 0.001f;
 
     /** Whether any of the region's stages is on at `position` this block. */
@@ -336,11 +352,12 @@ private:
         fxme::LevelMatcher satLevel[2];     // the saturator's auto-gain
         fxme::BitCrusher   crush[2];
         fxme::Downsampler  ds[2];
-        fxme::SplicePitchShifter shift;     // stereo, one set of splices
+        fxme::SplicePitchShifter transpose;
+        fxme::FrequencyShifter freqShift;   // stereo, one oscillator     // stereo, one set of splices
         juce::SmoothedValue<float> satDrive;
 
         /** Where each stage runs this block, -1 when off. */
-        int satPos = -1, crushPos = -1, dsPos = -1, shiftPos = -1;
+        int satPos = -1, crushPos = -1, dsPos = -1, transposePos = -1, freqShiftPos = -1;
     };
     Degrade degrade[dede::maxRegions];
 
@@ -386,6 +403,17 @@ private:
     juce::SmoothedValue<float> pan[dede::maxRegions][4];   // see panMatrix()
 
     std::atomic<double> currentBpm { 120.0 };
+
+    /** The host's song position at the block's start, while it plays. */
+    std::optional<double> hostPpq;
+
+    /** The freeze clock, in quarter notes (see processBlock), each region's
+        last step on it, and the spectral settings last sent (the clock
+        gates their freeze). Audio thread. */
+    double freezeClockPpq = 0.0;
+    static constexpr int64_t noFreezeStep = std::numeric_limits<int64_t>::min();
+    int64_t freezeStep[dede::maxRegions] {};
+    fxme::SpectralBandEffects::Settings bandEffects[dede::maxRegions];
     std::atomic<float>  lastNoteHz { 0.0f };
 
     double sampleRate = 44100.0;

@@ -4,6 +4,60 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Rhythmic and wide freeze (2026-09-30)
+
+The freeze was only interesting played by hand or automated. Three new
+controls in its stage of the Spectral tab (which now captions its choice
+boxes):
+
+- **Trigger** (`frztrg`): Manual (as before: frozen while Freeze is on),
+  Retrigger (captures again at every step of the rate), On/off (frozen for
+  one step, live for the next; frozen on the even steps). Freeze stays the
+  master switch.
+- **Rate** (`frzrate`): 1/64 to 1/2, each triplet, straight or dotted, synced
+  to the host tempo; default 1/8. The steps count from the host's song
+  position while it plays (so they sit on the grid, and a loop or a jump
+  lands on the right step), and run on by themselves while it is stopped.
+  `processBlock` cuts the block at every step boundary, so a step starts on
+  its sample whatever the block size (to the splitter's hop, ~11 ms at 2048).
+- **Width** (`frzwid`, 0 to 100 %): how far the frozen left and right
+  channels drift apart in phase. Tonal: one random offset per partial, fixed
+  (still in tune, same level on each side). Wash: one per bin and per hop,
+  independent channels at 100 %. Stereo bands only (a mono band has no second
+  channel to move). Default 0, the previous sound.
+- **FxmeTools:** `SpectralBandEffects` gains `Settings::freezeWidth`,
+  `Settings::keepTracking` (the analysis runs while the band is idle, so an
+  On/off freeze captures on its step and in tune rather than one hop late;
+  alone it changes nothing, bit for bit) and `retriggerFreeze (band)` (a new
+  capture on the next frame, synthesis phases carried on). Core tests: no
+  width keeps a mono image mono; full width takes a five-partial tonal freeze
+  to a correlation of 0.38 at the same level and pitch on each side, a wash
+  to about 0; a wide wash reproduces exactly; a retrigger swaps a held
+  1500 Hz for the new 1000 Hz input with no gap.
+- **Presets** re-saved with the three new parameters (at their defaults).
+
+## Freq shift stage; Shift renamed Transpose (2026-09-29)
+
+- **Freq shift**, a new Degrade stage (the Bode frequency shifter): every
+  frequency moved by the same number of Hz, -2 to +2 kHz, cubic knob, default
+  +30 Hz, positionable like the others (Before, In loop, After). In the loop
+  the repeats spiral up or down. Parameters `fshon`, `fshhz`, `fshpos`. The
+  chain order within a position is now saturation, bit-crush, downsample,
+  transpose, freq shift.
+- **Shift is now Transpose**, so the two cannot be confused: Transpose is a
+  musical interval (semitones, a ratio), Freq shift an offset in Hz. Its
+  parameters became `trnon`, `trnst`, `trnpos` (were `shfon`, `shfst`,
+  `shfpos`); the Spectral tab's Pitch keeps its name.
+- **FxmeTools:** `fxme::FrequencyShifter` (new, core): a Hilbert pair of
+  all-pass chains (Niemitalo's coefficients) and a single-sideband mix with a
+  quadrature oscillator; mono or stereo (one oscillator), no latency. Core
+  test `CoreFrequencyShifterTests`: a 1 kHz tone shifted +100, -250 and
+  +1000 Hz lands where it should at its own level (to 0.01 dB); its mirror is
+  at least 44 dB down from 50 Hz to 15 kHz; identical channels stay
+  identical. (A first version shifted the wrong way; the test caught it.)
+- **Presets** re-saved: the three keys renamed, the three new parameters in
+  (403 each).
+
 ## Per-region dynamics: expander and compressor around the two lines (2026-09-29)
 
 The global gate knee, attack and release are gone; each region has its own

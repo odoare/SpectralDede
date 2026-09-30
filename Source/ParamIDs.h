@@ -93,7 +93,8 @@ namespace ids
     inline constexpr const char* rgDly   = "dly";     // dB, delay output into the mix
     inline constexpr const char* rgSend  = "send";    // dB, send to the reverb
 
-    // Degrade chain (saturation -> bit-crush -> downsample -> shift), per
+    // Degrade chain (saturation -> bit-crush -> downsample -> transpose ->
+    // frequency shift), per
     // region. Each stage runs at its own position (see degradePositionNames).
     inline constexpr const char* rgSatOn    = "saton";   // bool
     inline constexpr const char* rgSatModel = "satmod";  // SaturationModel choice
@@ -102,18 +103,24 @@ namespace ids
     inline constexpr const char* rgCrushBits = "bits";   // 1..24, fractional
     inline constexpr const char* rgDsOn     = "dson";    // bool
     inline constexpr const char* rgDsFactor = "dsf";     // hold length, 1..1024
-    inline constexpr const char* rgShiftOn  = "shfon";   // bool, time-domain pitch shift
-    inline constexpr const char* rgShiftSt  = "shfst";   // semitones, fractional
+    inline constexpr const char* rgTransposeOn  = "trnon";   // bool, time-domain pitch shift
+    inline constexpr const char* rgTransposeSt  = "trnst";   // semitones, fractional
     inline constexpr const char* rgSatPos   = "satpos";  // DegradePosition choice
     inline constexpr const char* rgCrushPos = "crshpos"; // DegradePosition choice
     inline constexpr const char* rgDsPos    = "dspos";   // DegradePosition choice
-    inline constexpr const char* rgShiftPos = "shfpos";  // DegradePosition choice
+    inline constexpr const char* rgTransposePos = "trnpos";
+    inline constexpr const char* rgFreqShiftOn  = "fshon";   // bool, frequency shift (Hz)
+    inline constexpr const char* rgFreqShiftHz  = "fshhz";   // Hz, signed
+    inline constexpr const char* rgFreqShiftPos = "fshpos";  // DegradePosition choice  // DegradePosition choice
 
     // Spectral transforms (pitch, freeze, blur), per region.
     inline constexpr const char* rgPitchOn  = "pshon";   // bool
     inline constexpr const char* rgPitchSt  = "pshst";   // semitones, fractional
     inline constexpr const char* rgFreezeOn = "frzon";   // bool, latched
     inline constexpr const char* rgFreezeMode = "frzmod"; // FreezeMode choice
+    inline constexpr const char* rgFreezeTrig = "frztrg"; // FreezeTrigger choice
+    inline constexpr const char* rgFreezeRate = "frzrate"; // freezeRateNames choice
+    inline constexpr const char* rgFreezeWidth = "frzwid"; // 0..1, stereo bands only
     inline constexpr const char* rgBlurOn   = "blron";   // bool
     inline constexpr const char* rgBlurMs   = "blrms";   // ms
 
@@ -194,9 +201,15 @@ inline constexpr float maxDownsample     = 1024.0f;
 enum class DegradePosition { before = 0, loop, after };
 inline const juce::StringArray degradePositionNames { "Before", "In loop", "After" };
 
-/** The Shift stage (time-domain pitch shift), in semitones. */
-inline constexpr float maxShiftSemitones     = 24.0f;
-inline constexpr float defaultShiftSemitones = 12.0f;
+/** The Transpose stage (time-domain pitch shift), in semitones. */
+inline constexpr float maxTransposeSemitones     = 24.0f;
+inline constexpr float defaultTransposeSemitones = 12.0f;
+
+/** The Freq shift stage (every frequency moved by the same number of Hz),
+    -2 to +2 kHz. The knob is cubic, so the slow, phasing shifts of a few Hz
+    near the middle get most of its travel. */
+inline constexpr float maxFreqShiftHz     = 2000.0f;
+inline constexpr float defaultFreqShiftHz = 30.0f;
 
 inline const juce::StringArray saturationModelNames { "Standard", "Dynamic", "Triode", "Class AB" };
 
@@ -209,6 +222,30 @@ inline constexpr float defaultBlurMs = 300.0f;
 
 /** Order of the freeze mode choice; matches fxme::SpectralBandEffects::FreezeMode. */
 inline const juce::StringArray freezeModeNames { "Tonal", "Wash" };
+
+/** What drives a region's freeze while its Freeze switch is on. Manual: it
+    is simply frozen. Retrigger: it captures again at every step of the
+    freeze rate. On/off: frozen for one step, live for the next (frozen on
+    the even steps, counted from the host's song position). Stored as a
+    choice index: the order is part of the saved state. */
+enum class FreezeTrigger { manual = 0, retrigger, onOff };
+inline const juce::StringArray freezeTriggerNames { "Manual", "Retrigger", "On/off" };
+
+/** The freeze rate, tempo-synced: 1/64 to 1/2, each as a triplet, straight
+    and dotted, in that order. */
+inline const juce::StringArray freezeRateNames {
+    "1/64 T", "1/64", "1/64 D", "1/32 T", "1/32", "1/32 D", "1/16 T", "1/16", "1/16 D",
+    "1/8 T",  "1/8",  "1/8 D",  "1/4 T",  "1/4",  "1/4 D",  "1/2 T",  "1/2",  "1/2 D" };
+inline constexpr int defaultFreezeRateIndex = 10;   // 1/8
+
+/** Length of one step of freeze rate `index`, in quarter notes. */
+inline double freezeRateQuarters (int index) noexcept
+{
+    index = juce::jlimit (0, freezeRateNames.size() - 1, index);
+    const double straight = 4.0 / (double) (64 >> (index / 3));
+    constexpr double factors[] { 2.0 / 3.0, 1.0, 1.5 };
+    return straight * factors[index % 3];
+}
 
 inline constexpr float minDelayValue = 0.001f;
 inline constexpr float maxDelayValue = 3.0f;

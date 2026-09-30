@@ -12,7 +12,8 @@
         Per frequency bin in the Spectral engine (a spectral expander /
         compressor), on the band's level in the Live engine (a multiband
         one).
-      - Spectral: pitch shift (fractional semitones), freeze (tonal or wash)
+      - Spectral: pitch shift (fractional semitones), freeze (tonal or wash;
+        manual, retriggered or gated on/off at a synced rate; stereo width)
         and blur, each with its own switch, done inside the splitter's frame
         before the band leaves it (so before the delay and degrade stages).
       - Delay: the two delay times and how they are read (seconds, host tempo,
@@ -20,8 +21,10 @@
         output: its own band undelayed (Dry, off by default, added on top of
         the global dry), its repeats (Delay), and the send to the shared reverb
         (Reverb), taken after those two levels.
-      - Degrade: saturation, bit-crush, downsampling and a time-domain pitch
-        shift (Shift), each with its own switch and its own position: before
+      - Degrade: saturation, bit-crush, downsampling, Transpose (a time-domain
+        pitch shift, in semitones) and Freq shift (every frequency moved by
+        the same number of Hz), each with its own switch and its own position:
+        before
         the delay (on the mono band, so the region's Dry hears it too), in
         the delay loop (on what enters the lines: the first echo, then again
         on every repeat), or after the delay (on the repeats).

@@ -73,9 +73,10 @@ louder side (`Saturator::processSample (x, railDemand)`) and one auto-gain
 follows both sides' power (`LevelMatcher::processFrame`), so the image does
 not move with the level.
 
-**The degrade stages** are saturation, bit-crush, downsample and **Shift** (a
-time-domain pitch shift), each with its own switch (skipped when off) and its
-own **position**:
+**The degrade stages** are saturation, bit-crush, downsample, **Transpose** (a
+time-domain pitch shift, in semitones) and **Freq shift** (every frequency
+moved by the same number of Hz), each with its own switch (skipped when off)
+and its own **position**:
 
 - **Before** the delay: on the mono band, before the pan (so a saturator does
   not drive the louder side of a panned region harder). The region's Dry
@@ -84,16 +85,17 @@ own **position**:
   written into the lines (the input plus the fed-back signal), through the
   delay's per-sample insert. The first echo goes through it once, the second
   twice, and so on: a saturator drives each repeat harder, a crusher grinds it
-  further, a Shift of +12 climbs an octave per repeat (the classic shimmer,
+  further, a Transpose of +12 climbs an octave per repeat (the classic shimmer,
   todo item 13b). Stereo.
 - **After** the delay: on the repeats as they leave, stereo.
 
 Within one position the order is fixed: saturation, bit-crush, downsample,
-shift. A stage that comes on or moves starts from rest. Each region's state
-is two of each stage (one per channel; before the delay only the first is
-used) and one stereo shifter.
+transpose, freq shift. A stage that comes on or moves starts from rest. Each
+region's state is two of each stage (one per channel; before the delay only
+the first is used), one stereo pitch shifter and one stereo frequency
+shifter.
 
-**Shift** is `fxme::SplicePitchShifter` (FxmeTools core), -24 to +24
+**Transpose** is `fxme::SplicePitchShifter` (FxmeTools core), -24 to +24
 semitones, default +12: a delay-line shifter whose splices are aligned on the
 signal by cross-correlation, so a tone stays in phase across them (the
 older free-running `fxme::PitchShifter` turns a sine shifted by an octave
@@ -106,6 +108,17 @@ compensated: the band, and its Dry, arrive about 20 ms late. At 0 semitones
 it is a clean delay with no splices. CPU: about 0.3 % of a core per region at
 0 semitones, 0.5 % at +-12, 1 % at +24.
 
+**Freq shift** is `fxme::FrequencyShifter` (FxmeTools core), -2 to +2 kHz on a
+cubic knob (most of its travel for the few Hz around 0), default +30 Hz. The
+Bode kind: a Hilbert pair (two chains of four all-pass sections, Olli
+Niemitalo's coefficients, 90 degrees apart to within a fraction of a degree
+across the band) and a quadrature oscillator keep a single sideband, the
+input moved up or down by the shift, its mirror at least 44 dB down from 50
+Hz to 15 kHz. Frequencies move by an amount, not a ratio, so harmonics drift
+out of tune: a few Hz phases, tens of Hz beat, hundreds turn metallic. In
+the loop each repeat moves again, spiralling up or down (the barber pole).
+No latency; stereo with one oscillator for both sides.
+
 The drive knob sets how hard the band clips, not how loud it
 comes out: the saturator's output is divided by its drive (unity for small
 signals, instantly), then an `fxme::LevelMatcher` brings it back to the
@@ -116,7 +129,7 @@ The saturator's bias and sag are fixed per model (sag 0.5 except Standard,
 Class AB with a -0.1 overlap for its crossover notch).
 
 The stages spread energy outside the region (harmonics, aliasing, and a
-Shift moves the whole band). That is left as it is: a "keep in band"
+Transpose and Freq shift move the whole band). That is left as it is: a "keep in band"
 band-pass after them was tried and removed, as it mostly took the effect
 away again.
 
@@ -188,7 +201,17 @@ random-phase wash) and **blur** (magnitudes smoothed over time), by
 share one phase vocoder (frequency tracking once per hop, for every region),
 cost no extra transform and add no latency. Order per region: gate and
 ceiling, then freeze or blur, then pitch. A region with all three off is left
-untouched bit for bit. The spectral transforms come *before* the degrade
+untouched bit for bit.
+
+The freeze can also be driven rhythmically (its Trigger: Retrigger captures
+again at every step of a tempo-synced rate, On/off freezes one step out of
+two), and widened (its Width moves each frozen bin's left and right phases
+apart; stereo bands only). The steps come from a freeze clock in
+`processBlock`: the host's song position while it plays, running on by itself
+otherwise. The block is cut into chunks at every step boundary, so a step
+starts on its sample (to the splitter's hop) whatever the host's block size.
+An On/off freeze keeps the phase vocoder's analysis running between its steps
+(`keepTracking`), so each capture lands on its step and in tune. The spectral transforms come *before* the degrade
 chain, which works on the region's time-domain output.
 
 Three consequences shape the rest of the design:
@@ -396,9 +419,10 @@ from the region's output after `dry` and `dly`).
 Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),
 `satdrv` (0 to 48 dB, default 12), `crshon`, `bits` (1 to 24, fractional,
 default 8), `dson`, `dsf` (hold length 1 to 1024, logarithmic, default 4),
-`shfon`, `shfst` (-24 to +24 semitones, 0.01 steps, default +12), and one
-position per stage, `satpos`, `crshpos`, `dspos`, `shfpos` (Before, In loop,
-After; default Before). All stages default to off.
+`trnon`, `trnst` (Transpose, -24 to +24 semitones, 0.01 steps, default +12),
+`fshon`, `fshhz` (Freq shift, -2000 to +2000 Hz, cubic, default +30), and one
+position per stage, `satpos`, `crshpos`, `dspos`, `trnpos`, `fshpos` (Before,
+In loop, After; default Before). All stages default to off.
 
 Spectral, per region: `pshon`, `pshst` (-24 to +24 semitones, 0.01 steps),
 `frzon` (latched: captures the region's spectrum when switched on), `frzmod`

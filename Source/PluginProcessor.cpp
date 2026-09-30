@@ -258,7 +258,7 @@ DedeAudioProcessor::createParameterLayout()
                     AudioParameterFloatAttributes().withStringFromValueFunction (msToText)));
         }
 
-        // ---- Degrade: saturation -> bit-crush -> downsample -> shift, all off --
+        // ---- Degrade: saturation -> crush -> downsample -> transpose -> freq shift --
         layout.add (std::make_unique<AudioParameterBool> (
             ParameterID { id (ids::rgSatOn), 1 }, slot + "Saturation On", false));
 
@@ -291,21 +291,39 @@ DedeAudioProcessor::createParameterLayout()
                 [] (float x, int) { return "x" + String (x, x < 10.0f ? 2 : 1); })));
 
         layout.add (std::make_unique<AudioParameterBool> (
-            ParameterID { id (ids::rgShiftOn), 1 }, slot + "Shift On", false));
+            ParameterID { id (ids::rgTransposeOn), 1 }, slot + "Transpose On", false));
 
         layout.add (std::make_unique<AudioParameterFloat> (
-            ParameterID { id (ids::rgShiftSt), 1 }, slot + "Shift Semitones",
-            NormalisableRange<float> (-maxShiftSemitones, maxShiftSemitones, 0.01f),
-            defaultShiftSemitones,
+            ParameterID { id (ids::rgTransposeSt), 1 }, slot + "Transpose Semitones",
+            NormalisableRange<float> (-maxTransposeSemitones, maxTransposeSemitones, 0.01f),
+            defaultTransposeSemitones,
             AudioParameterFloatAttributes().withStringFromValueFunction (
                 [] (float x, int) { return (x > 0.0f ? "+" : "") + String (x, 2) + " st"; })));
 
+        layout.add (std::make_unique<AudioParameterBool> (
+            ParameterID { id (ids::rgFreqShiftOn), 1 }, slot + "Freq Shift On", false));
+
+        // Cubic: most of the travel for the few Hz around 0.
+        NormalisableRange<float> freqShiftRange (
+            -maxFreqShiftHz, maxFreqShiftHz,
+            [] (float lo, float hi, float x) { const float s = 2.0f * x - 1.0f; return jmap (s * s * s, -1.0f, 1.0f, lo, hi); },
+            [] (float lo, float hi, float v) { const float s = jmap (v, lo, hi, -1.0f, 1.0f);
+                                               return 0.5f * (std::cbrt (s) + 1.0f); },
+            [] (float, float, float v) { return std::round (v * 10.0f) / 10.0f; });
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgFreqShiftHz), 1 }, slot + "Freq Shift Hz",
+            freqShiftRange, defaultFreqShiftHz,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return (x > 0.0f ? "+" : "") + String (x, std::abs (x) < 100.0f ? 1 : 0) + " Hz"; })));
+
         // Where each stage sits: before the delay, in its loop, or after it.
-        for (const auto* pos : { ids::rgSatPos, ids::rgCrushPos, ids::rgDsPos, ids::rgShiftPos })
+        for (const auto* pos : { ids::rgSatPos, ids::rgCrushPos, ids::rgDsPos, ids::rgTransposePos,
+                                 ids::rgFreqShiftPos })
         {
-            const String stage = pos == ids::rgSatPos   ? "Saturation"
-                               : pos == ids::rgCrushPos ? "Bit-crush"
-                               : pos == ids::rgDsPos    ? "Downsample" : "Shift";
+            const String stage = pos == ids::rgSatPos       ? "Saturation"
+                               : pos == ids::rgCrushPos     ? "Bit-crush"
+                               : pos == ids::rgDsPos        ? "Downsample"
+                               : pos == ids::rgTransposePos ? "Transpose" : "Freq Shift";
             layout.add (std::make_unique<AudioParameterChoice> (
                 ParameterID { id (pos), 1 }, slot + stage + " Position",
                 degradePositionNames, (int) DegradePosition::before));
@@ -327,6 +345,20 @@ DedeAudioProcessor::createParameterLayout()
         layout.add (std::make_unique<AudioParameterChoice> (
             ParameterID { id (ids::rgFreezeMode), 1 }, slot + "Freeze Mode",
             freezeModeNames, 0));
+
+        layout.add (std::make_unique<AudioParameterChoice> (
+            ParameterID { id (ids::rgFreezeTrig), 1 }, slot + "Freeze Trigger",
+            freezeTriggerNames, (int) FreezeTrigger::manual));
+
+        layout.add (std::make_unique<AudioParameterChoice> (
+            ParameterID { id (ids::rgFreezeRate), 1 }, slot + "Freeze Rate",
+            freezeRateNames, defaultFreezeRateIndex));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id (ids::rgFreezeWidth), 1 }, slot + "Freeze Width",
+            NormalisableRange<float> (0.0f, 1.0f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (
+                [] (float x, int) { return String (juce::roundToInt (x * 100.0f)) + " %"; })));
 
         layout.add (std::make_unique<AudioParameterBool> (
             ParameterID { id (ids::rgBlurOn), 1 }, slot + "Blur On", false));
@@ -554,17 +586,23 @@ void DedeAudioProcessor::cacheParameterPointers()
         r.ceilAttack  = raw (ids::region (i, ids::rgCeilAttack));
         r.ceilRelease = raw (ids::region (i, ids::rgCeilRelease));
 
-        r.shiftOn  = raw (ids::region (i, ids::rgShiftOn));
-        r.shiftSt  = raw (ids::region (i, ids::rgShiftSt));
+        r.transposeOn  = raw (ids::region (i, ids::rgTransposeOn));
+        r.transposeSt  = raw (ids::region (i, ids::rgTransposeSt));
         r.satPos   = raw (ids::region (i, ids::rgSatPos));
         r.crushPos = raw (ids::region (i, ids::rgCrushPos));
         r.dsPos    = raw (ids::region (i, ids::rgDsPos));
-        r.shiftPos = raw (ids::region (i, ids::rgShiftPos));
+        r.transposePos = raw (ids::region (i, ids::rgTransposePos));
+        r.freqShiftOn  = raw (ids::region (i, ids::rgFreqShiftOn));
+        r.freqShiftHz  = raw (ids::region (i, ids::rgFreqShiftHz));
+        r.freqShiftPos = raw (ids::region (i, ids::rgFreqShiftPos));
 
         r.pitchOn    = raw (ids::region (i, ids::rgPitchOn));
         r.pitchSt    = raw (ids::region (i, ids::rgPitchSt));
         r.freezeOn   = raw (ids::region (i, ids::rgFreezeOn));
         r.freezeMode = raw (ids::region (i, ids::rgFreezeMode));
+        r.freezeTrig = raw (ids::region (i, ids::rgFreezeTrig));
+        r.freezeRate = raw (ids::region (i, ids::rgFreezeRate));
+        r.freezeWidth = raw (ids::region (i, ids::rgFreezeWidth));
         r.blurOn     = raw (ids::region (i, ids::rgBlurOn));
         r.blurMs     = raw (ids::region (i, ids::rgBlurMs));
     }
@@ -575,6 +613,7 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
 {
     sampleRate = newSampleRate;
     preparedBlockSize = samplesPerBlock;
+    std::fill (std::begin (freezeStep), std::end (freezeStep), noFreezeStep);
 
     configureEngine (requestedLiveEngine(), requestedFftOrder(), requestedStereoBands(), false);
 
@@ -634,9 +673,10 @@ void DedeAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBloc
             d.satLevel[ch].prepare (sampleRate);
             d.ds[ch].reset();
         }
-        d.shift.prepare (sampleRate, 2);
+        d.transpose.prepare (sampleRate, 2);
+        d.freqShift.prepare (sampleRate, 2);
         d.satDrive.reset (sampleRate, 0.02);
-        d.satPos = d.crushPos = d.dsPos = d.shiftPos = -1;
+        d.satPos = d.crushPos = d.dsPos = d.transposePos = d.freqShiftPos = -1;
 
         audibleGain[i].reset (sampleRate, 0.005);
         audibleGain[i].setCurrentAndTargetValue (isAudible (i, anySolo()) ? 1.0f : 0.0f);
@@ -667,11 +707,12 @@ void DedeAudioProcessor::resetDegrade (int slot)
         d.satLevel[ch].reset();
         d.ds[ch].reset();
     }
-    d.shift.reset();
+    d.transpose.reset();
+    d.freqShift.reset();
 
     // Every stage counts as newly placed on the next block, so it also snaps
     // its drive rather than gliding from the last region's.
-    d.satPos = d.crushPos = d.dsPos = d.shiftPos = -1;
+    d.satPos = d.crushPos = d.dsPos = d.transposePos = d.freqShiftPos = -1;
 }
 
 bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -690,10 +731,16 @@ bool DedeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
 //==============================================================================
 void DedeAudioProcessor::updateTransportAndMidi (const juce::MidiBuffer& midi)
 {
+    hostPpq.reset();
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
+        {
             if (auto bpm = pos->getBpm())
                 currentBpm.store (*bpm > 0.0 ? *bpm : 120.0);
+            if (pos->getIsPlaying())
+                if (auto ppq = pos->getPpqPosition())
+                    hostPpq = *ppq;
+        }
 
     // The *last* note of the block wins: MIDI-note mode tracks whatever was
     // played most recently, and re-triggering the same note is a no-op.
@@ -773,10 +820,61 @@ void DedeAudioProcessor::updateBands()
         fx.freezeOn       = r.freezeOn->load() > 0.5f;
         fx.freezeMode     = (fxme::SpectralBandEffects::FreezeMode)
                                 juce::jlimit (0, 1, (int) r.freezeMode->load());
+        fx.freezeWidth    = r.freezeWidth->load();
+        // A gated freeze keeps the analysis going between its steps, so each
+        // capture lands on the step, in tune, instead of one hop late.
+        fx.keepTracking   = fx.freezeOn && freezeTrigger (i) == FreezeTrigger::onOff;
         fx.blurOn         = r.blurOn->load() > 0.5f;
         fx.blurSeconds    = r.blurMs->load() * 0.001f;
+        bandEffects[i] = fx;
         spectral.setBand (i, fx);
     }
+}
+
+FreezeTrigger DedeAudioProcessor::freezeTrigger (int slot) const noexcept
+{
+    return (FreezeTrigger) juce::jlimit (0, freezeTriggerNames.size() - 1,
+                                         (int) regions[slot].freezeTrig->load());
+}
+
+int DedeAudioProcessor::runFreezeClock (double ppq, double quartersPerSample)
+{
+    int untilNext = std::numeric_limits<int>::max();
+
+    for (int i = 0; i < maxRegions; ++i)
+    {
+        const auto trigger = freezeTrigger (i);
+        auto& fx = bandEffects[i];
+
+        if (regions[i].freezeOn->load() <= 0.5f || trigger == FreezeTrigger::manual)
+        {
+            freezeStep[i] = noFreezeStep;
+            continue;
+        }
+
+        // The step this sample falls in. Half a sample of slack, so a chunk
+        // that starts on a boundary (up to rounding) is counted in the step
+        // it starts rather than leaving a one-sample chunk behind it.
+        const double step = freezeRateQuarters ((int) regions[i].freezeRate->load());
+        const auto index = (int64_t) std::floor ((ppq + 0.5 * quartersPerSample) / step);
+
+        if (trigger == FreezeTrigger::retrigger)
+        {
+            if (freezeStep[i] != noFreezeStep && index != freezeStep[i])
+                spectral.retriggerFreeze (i);
+        }
+        else
+        {
+            fx.freezeOn = (index & 1) == 0;
+            spectral.setBand (i, fx);
+        }
+        freezeStep[i] = index;
+
+        const double toBoundary = ((double) (index + 1) * step - ppq) / quartersPerSample - 0.5;
+        untilNext = juce::jmin (untilNext, juce::jmax (1, (int) std::ceil (toBoundary)));
+    }
+
+    return untilNext;
 }
 
 fxme::BandDynamics DedeAudioProcessor::regionDynamics (int slot) const
@@ -996,21 +1094,31 @@ void DedeAudioProcessor::beginDegradeBlock (int slot)
     }
     d.dsPos = dsPos;
 
-    const int shiftPos = place (r.shiftOn, r.shiftPos);
-    if (shiftPos >= 0)
+    const int transposePos = place (r.transposeOn, r.transposePos);
+    if (transposePos >= 0)
     {
-        d.shift.setPitchSemitones (r.shiftSt->load());
-        if (shiftPos != d.shiftPos)
-            d.shift.reset();
+        d.transpose.setPitchSemitones (r.transposeSt->load());
+        if (transposePos != d.transposePos)
+            d.transpose.reset();
     }
-    d.shiftPos = shiftPos;
+    d.transposePos = transposePos;
+
+    const int freqShiftPos = place (r.freqShiftOn, r.freqShiftPos);
+    if (freqShiftPos >= 0)
+    {
+        d.freqShift.setShiftHz (r.freqShiftHz->load());
+        if (freqShiftPos != d.freqShiftPos)
+            d.freqShift.reset();
+    }
+    d.freqShiftPos = freqShiftPos;
 }
 
 bool DedeAudioProcessor::hasDegradeAt (int slot, DegradePosition position) const noexcept
 {
     const auto& d = degrade[slot];
     const int p = (int) position;
-    return d.satPos == p || d.crushPos == p || d.dsPos == p || d.shiftPos == p;
+    return d.satPos == p || d.crushPos == p || d.dsPos == p || d.transposePos == p
+        || d.freqShiftPos == p;
 }
 
 void DedeAudioProcessor::degradeFrame (int slot, DegradePosition position,
@@ -1058,11 +1166,20 @@ void DedeAudioProcessor::degradeFrame (int slot, DegradePosition position,
         for (int ch = 0; ch < numChannels; ++ch)
             frame[ch] = d.ds[ch].processSample (frame[ch]);
 
-    if (d.shiftPos == p)
+    if (d.transposePos == p)
     {
         // The shifter is stereo; a mono frame runs with a silent right side.
         float f[2] { frame[0], numChannels > 1 ? frame[1] : 0.0f };
-        d.shift.processFrame (f);
+        d.transpose.processFrame (f);
+        for (int ch = 0; ch < numChannels; ++ch)
+            frame[ch] = f[ch];
+    }
+
+    if (d.freqShiftPos == p)
+    {
+        // Stereo too, one oscillator for both sides; a mono frame likewise.
+        float f[2] { frame[0], numChannels > 1 ? frame[1] : 0.0f };
+        d.freqShift.processFrame (f);
         for (int ch = 0; ch < numChannels; ++ch)
             frame[ch] = f[ch];
     }
@@ -1080,11 +1197,11 @@ void DedeAudioProcessor::updateDelay (int slot)
     const auto mode = (fxme::DelayTimeMode) juce::jlimit (0, numDelayModes - 1,
                                                           (int) r.mode->load());
 
-    // A Shift in the loop delays everything going round by its own latency:
+    // A Transpose in the loop delays everything going round by its own latency:
     // take it off the lines, so the repeats still land on time.
     float loopExtra = 0.0f;
-    if (r.shiftOn->load() > 0.5f && (int) r.shiftPos->load() == (int) DegradePosition::loop)
-        loopExtra = degrade[slot].shift.getLatencySamples() / (float) sampleRate;
+    if (r.transposeOn->load() > 0.5f && (int) r.transposePos->load() == (int) DegradePosition::loop)
+        loopExtra = degrade[slot].transpose.getLatencySamples() / (float) sampleRate;
 
     const auto seconds = [&] (float value)
     {
@@ -1368,9 +1485,25 @@ void DedeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     revGain.setTargetValue (juce::Decibels::decibelsToGain (pRevLevel->load()));
     outGain.setTargetValue (juce::Decibels::decibelsToGain (pOutLevel->load()));
 
+    // The freeze clock: the host's song position while it plays, running on
+    // by itself from wherever it was while it does not. Chunks are cut at
+    // every step boundary of a rhythmic freeze, so a step starts on its
+    // sample (to the splitter's hop) whatever the block size.
+    const double quartersPerSample = currentBpm.load() / (60.0 * sampleRate);
+    if (hostPpq.has_value())
+        freezeClockPpq = *hostPpq;
+
     const int maxChunk = juce::jmax (1, monoBuffer.getNumSamples());
-    for (int start = 0; start < n; start += maxChunk)
-        processChunk (buffer, start, juce::jmin (maxChunk, n - start));
+    for (int start = 0; start < n;)
+    {
+        const int untilStep = runFreezeClock (freezeClockPpq + start * quartersPerSample,
+                                              quartersPerSample);
+        const int length = juce::jmin (maxChunk, n - start, untilStep);
+        processChunk (buffer, start, length);
+        start += length;
+    }
+
+    freezeClockPpq += n * quartersPerSample;
 
     // A mono output bus shows on both sides.
     for (int ch = 0; ch < 2; ++ch)
