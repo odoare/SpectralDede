@@ -179,7 +179,7 @@ muted), so a region can also keep only the level window between the two
 lines, for instance the quiet tails and room of a sound without its loud
 notes.
 
-**Dynamics** (the region popup's first tab, per region, `fxme::BandDynamics`
+**Dynamics** (the region dock's first tab, per region, `fxme::BandDynamics`
 in FxmeTools). The two lines are not only switches: under the gate is a
 downward expander (a ratio from 1:1 to 1:20 and infinity, the default and the
 original hard gate, with a range: how far down it goes, -inf by default),
@@ -352,14 +352,18 @@ Dede's own `Source/`:
   MIDI state, the audio path.
 - `PluginEditor.{h,cpp}` — window layout, global controls, preset chrome, and
   the wiring between the region editor and the parameters.
-- `RegionPanel.{h,cpp}` — the callout opened by clicking a region: its two
-  delay times and their mode, its three feedback gains and its reverb send.
-  Nothing that has a handle on the spectrum appears here.
+- `RegionPanel.{h,cpp}` — the selected region's settings, docked under the
+  spectrum: tabs (Dynamics, Spectral, Delay, Degrade) and, always in view,
+  its output strip (gain, pan, Dry, Delay, reverb send).
 
 ## The editor and the parameters
 
 Layout. A top bar (preset strip, preset browser, the gear that opens the
-global controls, help); the spectrum view; and on its left a column holding
+global controls, help); the spectrum view, with the selected region's
+settings docked under it (`RegionPanel`, remade on every selection change,
+a hint when nothing is selected; docked rather than in a callout so the
+lines and handles can be dragged while its knobs are in sight); and on its
+left a column holding
 one row per region slot (`RegionColumn`), the four levels in a 2 x 2 grid
 (Dry, Delays, Reverb return, Output), and the output meter (`OutputMeter`,
 RMS over 100 ms plus a peak marker, from `getOutputLevelDb` and

@@ -9,7 +9,7 @@
     The identity is the spectrum itself. Region colours are sampled from a
     violet -> cyan -> amber ramp indexed by slot, so the eight regions stay
     told apart wherever they appear (the rectangle on the analyser, the border
-    handles, the delay popup that belongs to them). The backdrop is that same
+    handles, the settings dock that belongs to them). The backdrop is that same
     ramp taken down to near-black, cold on the left and warm on the right,
     which reads as a frequency axis without competing with the trace.
 
@@ -108,8 +108,12 @@ namespace dede::theme
     inline constexpr int levelKnobHeight = 80;   // the left column's 2 x 2 level knobs
 
     inline constexpr int regionColumnWidth = 180;
-    inline constexpr int minEditorWidth    = 950;   // keeps the spectrum usable beside the column
+    // The width keeps the region dock's knobs readable beside the column
+    // (RegionPanel::minimumWidth); the height keeps the spectrum usable over
+    // the dock.
+    inline constexpr int minEditorWidth    = 1080;
+    inline constexpr int minEditorHeight   = 660;
     inline constexpr int defaultWidth  = 1170;
-    inline constexpr int defaultHeight = 620;
+    inline constexpr int defaultHeight = 800;
 
 } // namespace dede::theme

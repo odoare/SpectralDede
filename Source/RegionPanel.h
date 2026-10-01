@@ -2,8 +2,11 @@
   ------------------------------------------------------------------------------
     RegionPanel.h
 
-    The settings of one region, shown in a callout when its rectangle is
-    clicked on the spectrum view, in tabs in signal order:
+    The settings of the selected region, docked under the spectrum view (so
+    its lines and handles can be dragged while its knobs are in sight): tabs
+    in signal order on the left, the region's output strip on the right.
+
+    The tabs:
 
       - Dynamics: what happens around the region's two lines (dragged on the
         view): under the gate a downward expander (ratio, range; a hard gate
@@ -17,10 +20,8 @@
         and blur, each with its own switch, done inside the splitter's frame
         before the band leaves it (so before the delay and degrade stages).
       - Delay: the two delay times and how they are read (seconds, host tempo,
-        or the last MIDI note), the three feedback gains, and the region's
-        output: its own band undelayed (Dry, off by default, added on top of
-        the global dry), its repeats (Delay), and the send to the shared reverb
-        (Reverb), taken after those two levels.
+        or the last MIDI note), with what they come to in milliseconds, and
+        the three feedback gains.
       - Degrade: saturation, bit-crush, downsampling, Transpose (a time-domain
         pitch shift, in semitones) and Freq shift (every frequency moved by
         the same number of Hz), each with its own switch and its own position:
@@ -29,12 +30,17 @@
         the delay loop (on what enters the lines: the first echo, then again
         on every repeat), or after the delay (on the repeats).
 
-    The region's borders, the levels of its gate and ceiling lines, and its
-    gain and pan are set by dragging on the view, so none of them appears
-    here. The panel is only what has no natural handle on a spectrum.
+    The strip, always in view whatever the tab: the region's gain and pan
+    (also its round handle on the view), its own band undelayed (Dry, off by
+    default, added on top of the global dry), its repeats (Delay), and the
+    send to the shared reverb (Reverb), taken after those two levels.
 
-    The tab last shown is remembered by the editor (not saved), so reopening a
-    region, or opening another, lands where the user was.
+    The region's borders and the levels of its gate and ceiling lines are set
+    by dragging on the view only.
+
+    The editor makes a new panel whenever the selection changes; the tab last
+    shown is remembered by the editor (not saved), so selecting another
+    region lands where the user was.
 
     Author: Olivier Doaré, github.com/odoare
     (c) 2026 Olivier Doaré
@@ -51,11 +57,16 @@
 class RegionPanel : public juce::Component
 {
 public:
-    /** `lastTab` is owned by the editor, which outlives the callout holding
-        this panel: it is read to pick the opening tab and written whenever the
-        user switches. */
+    /** `lastTab` is owned by the editor, which owns this panel: it is read to
+        pick the opening tab and written whenever the user switches. */
     RegionPanel (DedeAudioProcessor& processor, int slot, int& lastTab);
     ~RegionPanel() override;
+
+    /** The panel's height, fixed, and the least width its knobs fit in. */
+    static int preferredHeight();
+    static int minimumWidth();
+
+    int getSlot() const noexcept { return slot; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -65,10 +76,15 @@ private:
     class DelayPage;
     class StagesPage;
     class Tabs;
+    class Strip;
+
+    /** Where the strip sits, its heading included. */
+    juce::Rectangle<int> stripArea() const;
 
     const int slot;
     const juce::Colour accent;
     std::unique_ptr<Tabs> tabs;
+    std::unique_ptr<Strip> strip;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RegionPanel)
 };

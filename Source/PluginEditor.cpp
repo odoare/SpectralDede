@@ -34,7 +34,11 @@ namespace
         "    its knee, attack and release; per bin in Spectral, a multiband\n"
         "    compressor / expander in Live\n"
         "  drag the round handle for gain (up/down) and pan (left/right)\n"
-        "  click a region to open its settings, in signal order: dynamics;\n"
+        "  select a region (click it, or its row in the column) to show its\n"
+        "    settings under the spectrum, where they stay while its lines and\n"
+        "    handles are dragged. On the right, always in view, its output:\n"
+        "    gain, pan, Dry, Delay and the reverb send. On the left, tabs in\n"
+        "    signal order: dynamics;\n"
         "    spectral (pitch in semitones, freeze tonal or wash, held, retriggered\n"
         "    or gated on and off at a synced rate, with a stereo width; blur);\n"
         "    delay;\n"
@@ -164,13 +168,15 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     startTimerHz (20);
 
     setResizable (true, true);
-    setResizeLimits (theme::minEditorWidth, 520, 2400, 1600);
+    const int dockMinWidth = 3 * theme::margin + theme::regionColumnWidth + RegionPanel::minimumWidth();
+    setResizeLimits (juce::jmax (theme::minEditorWidth, dockMinWidth), theme::minEditorHeight, 2400, 1600);
     setSize (theme::defaultWidth, theme::defaultHeight);
 }
 
 DedeAudioProcessorEditor::~DedeAudioProcessorEditor()
 {
     stopTimer();
+    regionPanel.reset();
     processor.getPresetManager().removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
@@ -326,15 +332,18 @@ void DedeAudioProcessorEditor::wireRegionEditor()
     spectrum.onRegionDelete = [this] (int slot) { freeSlot (slot); };
 
     // The column and the view share the selection both ways.
-    spectrum.onSelectionChanged = [this] (int slot) { column.setSelectedRow (slot); };
+    // The column, the view and the dock share the selection.
+    spectrum.onSelectionChanged = [this] (int slot)
+    {
+        column.setSelectedRow (slot);
+        showRegion (slot);
+    };
     column.onRowClicked = [this] (int slot)
     {
         spectrum.setSelectedRegion (slot);
         spectrum.grabKeyboardFocus();          // so Delete acts on it at once
     };
     column.onFreeClicked = [this] (int slot) { freeSlot (slot); };
-
-    spectrum.onRegionClicked = [this] (int slot) { showRegionPanel (slot); };
 
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
@@ -362,18 +371,23 @@ bool DedeAudioProcessorEditor::anySoloed() const
     return false;
 }
 
-void DedeAudioProcessorEditor::showRegionPanel (int slot)
+void DedeAudioProcessorEditor::showRegion (int slot)
 {
     if (! juce::isPositiveAndBelow (slot, maxRegions))
+        slot = -1;
+
+    if (slot == (regionPanel != nullptr ? regionPanel->getSlot() : -1))
         return;
 
-    // Anchor the callout on the region's own rectangle, so it points at the
-    // band it belongs to rather than at the pointer.
-    const auto area = getLocalArea (&spectrum, spectrum.getRegionArea (slot).toFloat())
-                          .toNearestInt();
+    regionPanel.reset();
+    if (slot >= 0)
+    {
+        regionPanel = std::make_unique<RegionPanel> (processor, slot, lastRegionTab);
+        addAndMakeVisible (*regionPanel);
+        regionPanel->setBounds (dockArea);
+    }
 
-    juce::CallOutBox::launchAsynchronously (std::make_unique<RegionPanel> (processor, slot, lastRegionTab),
-                                            area, this);
+    repaint (dockArea);
 }
 
 void DedeAudioProcessorEditor::showPresetBrowser()
@@ -402,6 +416,15 @@ void DedeAudioProcessorEditor::showGlobalPanel()
 void DedeAudioProcessorEditor::timerCallback()
 {
     refreshRegionsFromParameters (false);
+
+    // The view drops the selection by itself when the selected region goes
+    // away under it (a preset load, automation of its slot), without a word.
+    const int selected = spectrum.getSelectedRegion();
+    if (selected != (regionPanel != nullptr ? regionPanel->getSlot() : -1))
+    {
+        column.setSelectedRow (selected);
+        showRegion (selected);
+    }
 
     // Follow the splitter's window once a new FFT size has been applied (it
     // is applied asynchronously, so poll what the processor actually runs).
@@ -440,6 +463,22 @@ juce::Image DedeAudioProcessorEditor::logoImage()
 void DedeAudioProcessorEditor::paint (juce::Graphics& g)
 {
     theme::paintBackground (g, getLocalBounds().toFloat());
+
+    // The dock with no region selected: what to do to fill it.
+    if (regionPanel == nullptr && ! dockArea.isEmpty())
+    {
+        const auto dock = dockArea.toFloat();
+        g.setColour (theme::panel.withAlpha (0.6f));
+        g.fillRoundedRectangle (dock, 5.0f);
+        g.setColour (theme::panelLine);
+        g.drawRoundedRectangle (dock.reduced (0.5f), 5.0f, 1.0f);
+
+        g.setColour (theme::dimText);
+        g.setFont (juce::Font (juce::FontOptions (13.0f)));
+        g.drawText ("Select a region (on the spectrum or in the column) to edit it here, "
+                    "or drag on empty space to draw one",
+                    dockArea.reduced (16), juce::Justification::centred);
+    }
 }
 
 void DedeAudioProcessorEditor::HairlineGlow::paint (juce::Graphics& g)
@@ -479,7 +518,13 @@ void DedeAudioProcessorEditor::resized()
     // grid, and the output meter at the very bottom.
     auto left = area.removeFromLeft (theme::regionColumnWidth);
     area.removeFromLeft (theme::margin);
+
+    // The selected region's settings, docked under the spectrum.
+    dockArea = area.removeFromBottom (RegionPanel::preferredHeight());
+    area.removeFromBottom (theme::margin);
     spectrum.setBounds (area);
+    if (regionPanel != nullptr)
+        regionPanel->setBounds (dockArea);
 
     outputMeter.setBounds (left.removeFromBottom (OutputMeter::preferredHeight));
     left.removeFromBottom (theme::margin);

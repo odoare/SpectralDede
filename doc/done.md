@@ -4,6 +4,23 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Region settings docked under the spectrum; output strip (2026-10-01)
+
+The region popup (a callout) closed on any click outside it, so a gate or
+ceiling line could not be dragged with the Dynamics knobs in sight. It is now
+docked under the spectrum and follows the selection (the view, the column
+and the dock share it); with nothing selected the dock says how to select or
+draw a region. The tab last shown is kept from one region to the next.
+
+- **Output strip**, on the right of the dock, always in view whatever the
+  tab: Gain, Pan (both also the round handle), Dry, Delay, Reverb send. Dry
+  and the other two output levels left the Delay tab, which keeps the times,
+  their mode (now captioned, the readout under it) and the feedback.
+- **Window**: default 1170 x 800 (was 620 high), minimum 1080 x 660 (was
+  950 x 520), so the dynamics row and the strip keep readable knobs and the
+  spectrum keeps its height over the dock.
+- On and Solo stay in the column only, next to the dock already.
+
 ## Rhythmic and wide freeze (2026-09-30)
 
 The freeze was only interesting played by hand or automated. Three new

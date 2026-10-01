@@ -16,14 +16,18 @@ using namespace dede;
 
 namespace
 {
-    constexpr int titleHeight  = 20;
     constexpr int tabBarDepth  = 24;
     constexpr int pagePadding  = 6;
     constexpr int knobHeight   = 82;
     constexpr int footerHeight = 24;
-    constexpr int knobWidth    = 74;
-    constexpr int numKnobs     = 9;     // the dynamics page's row sets the width
     constexpr int panelMargin  = 8;
+    constexpr int stripGap     = 12;    // between the tabs and the strip, a separator in it
+
+    /** Knob widths across the panel: the dynamics page's row (the widest
+        tab) and the strip. Every tab's knobs and the strip's share one width. */
+    constexpr int tabUnits   = 9;
+    constexpr int stripUnits = 5;
+    constexpr int minKnobWidth = 58;
 
     constexpr int positionRowHeight = 24;   // a degrade stage's position selector
 
@@ -58,8 +62,8 @@ namespace
 }
 
 //==============================================================================
-/** The region's delay (times, feedback) and its three output levels: its
-    own band (Dry), its repeats (Delay), and the reverb send taken from both. */
+/** The region's delay: its two times and how they are read, and its three
+    feedback gains. Its output levels are in the panel's strip. */
 class RegionPanel::DelayPage : public juce::Component,
                                private juce::Timer
 {
@@ -77,9 +81,6 @@ public:
         fbL        = knob (ids::rgFbL,   "Fb L");
         fbR        = knob (ids::rgFbR,   "Fb R");
         fbX        = knob (ids::rgFbX,   "Cross");
-        dryLevel   = knob (ids::rgDry,   "Dry");
-        delayLevel = knob (ids::rgDly,   "Delay");
-        send       = knob (ids::rgSend,  "Reverb");
 
         modeBox.addItem ("Seconds",   1);
         modeBox.addItem ("DAW sync",  2);
@@ -96,9 +97,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.setColour (theme::dimText);
-        g.setFont (11.0f);
-        g.drawText (timeText, getLocalBounds().removeFromBottom (footerHeight),
-                    juce::Justification::centredRight);
+        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.drawText ("Time mode", modeBox.getBounds().translated (0, -16).withHeight (14),
+                    juce::Justification::centred);
+        g.drawText (timeText, readoutArea, juce::Justification::centred);
     }
 
     void resized() override
@@ -106,15 +108,19 @@ public:
         auto area = getLocalBounds();
         area.removeFromTop (pagePadding);
 
+        // Five knobs, then the mode and what the times come to, two knobs
+        // wide, on the right.
         auto knobs = area.removeFromTop (knobHeight);
-        fxme::FxmeSlider* const row[] { timeL.get(), timeR.get(), fbL.get(), fbR.get(),
-                                        fbX.get(), dryLevel.get(), delayLevel.get(), send.get() };
+        fxme::FxmeSlider* const row[] { timeL.get(), timeR.get(), fbL.get(), fbR.get(), fbX.get() };
 
-        const int w = knobs.getWidth() / (int) std::size (row);
+        const int w = knobs.getWidth() / ((int) std::size (row) + 2);
         for (auto* k : row)
             k->setBounds (knobs.removeFromLeft (w).reduced (3));
 
-        modeBox.setBounds (area.removeFromLeft (110).withSizeKeepingCentre (110, 20));
+        auto side = knobs.reduced (8, 0);
+        modeBox.setBounds (side.withSizeKeepingCentre (juce::jmin (130, side.getWidth()), 20)
+                               .translated (0, -10));
+        readoutArea = side.withTop (modeBox.getBottom() + 6).withHeight (18);
     }
 
 private:
@@ -147,24 +153,23 @@ private:
             return juce::String (resolver.toSeconds (v, mode) * 1000.0f, 1) + " ms";
         };
 
-        juce::String text = "L " + ms (parameterValue (processor, slot, ids::rgTimeL))
-                          + "    R " + ms (parameterValue (processor, slot, ids::rgTimeR));
-
         // The note mode has nothing to lock to until something has been played,
         // and silently reading the value as seconds would look like a bug.
         if (mode == fxme::DelayTimeMode::notePeriod && resolver.noteHz <= 0.0f)
-            text += "    (no MIDI note yet)";
+            return "no MIDI note yet";
 
-        return text;
+        return "L " + ms (parameterValue (processor, slot, ids::rgTimeL))
+             + "   R " + ms (parameterValue (processor, slot, ids::rgTimeR));
     }
 
     DedeAudioProcessor& processor;
     const int slot;
 
-    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX, dryLevel, delayLevel, send;
+    std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX;
     juce::ComboBox modeBox;
     std::unique_ptr<ComboBoxAttachment> modeAttachment;
     juce::String timeText;
+    juce::Rectangle<int> readoutArea;
 };
 
 //==============================================================================
@@ -493,6 +498,45 @@ private:
 };
 
 //==============================================================================
+/** The region's output, beside the tabs and always in view: its level and
+    pan (the round handle on the spectrum), its own band undelayed (Dry), its
+    repeats (Delay), and the send to the shared reverb taken after those two. */
+class RegionPanel::Strip : public juce::Component
+{
+public:
+    Strip (DedeAudioProcessor& processor, int slot, juce::Colour accent)
+    {
+        const auto knob = [&] (const char* suffix, const char* label, const char* tooltip)
+        {
+            auto k = makeKnob (*this, processor, slot, suffix, label, accent);
+            k->setTooltip (tooltip);
+            return k;
+        };
+
+        gain   = knob (ids::rgGain, "Gain",   "The region's level: also the round handle's height");
+        pan    = knob (ids::rgPan,  "Pan",    "The region's pan: also the round handle's place across it");
+        dry    = knob (ids::rgDry,  "Dry",    "The region's own band, not delayed (panned, through the "
+                                              "stages placed before the delay), on top of the global dry");
+        delay  = knob (ids::rgDly,  "Delay",  "The region's repeats");
+        reverb = knob (ids::rgSend, "Reverb", "Send to the shared reverb, taken after Dry and Delay");
+
+        gain->setCentralValue (0.0);
+        pan->setCentralValue (0.0);
+    }
+
+    void resized() override
+    {
+        auto row = getLocalBounds().removeFromTop (knobHeight);
+        const int w = row.getWidth() / stripUnits;
+        for (auto* k : { gain.get(), pan.get(), dry.get(), delay.get(), reverb.get() })
+            k->setBounds (row.removeFromLeft (w).reduced (3));
+    }
+
+private:
+    std::unique_ptr<fxme::FxmeSlider> gain, pan, dry, delay, reverb;
+};
+
+//==============================================================================
 /** Tabs that report the page shown, so the editor can reopen on it. */
 class RegionPanel::Tabs : public juce::TabbedComponent
 {
@@ -519,7 +563,8 @@ private:
 //==============================================================================
 RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& lastTab)
     : slot (regionSlot), accent (theme::regionColour (regionSlot)),
-      tabs (std::make_unique<Tabs> (lastTab))
+      tabs (std::make_unique<Tabs> (lastTab)),
+      strip (std::make_unique<Strip> (processor, regionSlot, accent))
 {
     const int wanted = lastTab;
 
@@ -586,9 +631,24 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     tabs->setCurrentTabIndex (juce::jlimit (0, tabs->getNumTabs() - 1, wanted));
     tabs->tracking = true;
     addAndMakeVisible (*tabs);
+    addAndMakeVisible (*strip);
+}
 
-    setSize (numKnobs * knobWidth + 2 * panelMargin,
-             titleHeight + tabBarDepth + pageHeight + 2 * panelMargin);
+int RegionPanel::preferredHeight()
+{
+    return tabBarDepth + pageHeight + 2 * panelMargin;
+}
+
+int RegionPanel::minimumWidth()
+{
+    return (tabUnits + stripUnits) * minKnobWidth + stripGap + 2 * panelMargin;
+}
+
+juce::Rectangle<int> RegionPanel::stripArea() const
+{
+    auto area = getLocalBounds().reduced (panelMargin);
+    const int unit = (area.getWidth() - stripGap) / (tabUnits + stripUnits);
+    return area.removeFromRight (stripUnits * unit);
 }
 
 RegionPanel::~RegionPanel() = default;
@@ -602,16 +662,32 @@ void RegionPanel::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.55f));
     g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
 
+    // The strip's heading, level with the tab bar: which region this is.
+    auto heading = stripArea().removeFromTop (tabBarDepth).reduced (3, 2);
+    auto chip = heading.removeFromLeft (heading.getHeight() + 4).toFloat();
+    g.setColour (accent);
+    g.fillRoundedRectangle (chip, 3.0f);
+    g.setColour (juce::Colours::black);
+    g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
+    g.drawText (juce::String (slot + 1), chip, juce::Justification::centred);
+
     g.setColour (accent);
     g.setFont (juce::Font (juce::FontOptions (13.0f).withStyle ("Bold")));
-    g.drawText ("Region " + juce::String (slot + 1),
-                getLocalBounds().reduced (panelMargin).removeFromTop (titleHeight),
+    g.drawText ("Region " + juce::String (slot + 1) + " output", heading.withTrimmedLeft (8),
                 juce::Justification::centredLeft);
+
+    // Between the tabs and the strip.
+    const auto strip = stripArea();
+    g.setColour (theme::panelLine);
+    g.fillRect (juce::Rectangle<float> ((float) strip.getX() - (float) stripGap * 0.5f,
+                                        (float) panelMargin + 4.0f, 1.0f,
+                                        (float) getHeight() - 2.0f * (float) panelMargin - 8.0f));
 }
 
 void RegionPanel::resized()
 {
     auto area = getLocalBounds().reduced (panelMargin);
-    area.removeFromTop (titleHeight);
-    tabs->setBounds (area);
+    const auto stripBounds = stripArea();
+    tabs->setBounds (area.withRight (stripBounds.getX() - stripGap));
+    strip->setBounds (stripBounds.withTrimmedTop (tabBarDepth + pagePadding));
 }

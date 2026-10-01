@@ -23,8 +23,10 @@ The spectrum view is the whole interface.
   is dropped. Drag it up into the trace and only the peaks get through.
 - The round handle sets the region's gain (up and down) and its pan (left and
   right, across the region's own width).
-- Click a region to open its delay settings: the two times and how they are
-  read, the three feedback gains, and the send to the reverb.
+- Select a region (click it, or its row in the column) and its settings show
+  under the spectrum, where they stay while you drag its lines: tabs for its
+  dynamics, spectral effects, delay and degrade stages, and beside them its
+  output (gain, pan, its own dry band, its repeats, the reverb send).
 - Delete or Backspace removes the selected region. Up to eight at once.
 
 Delay times read three ways, chosen per region: seconds, a proportion of a

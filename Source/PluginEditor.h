@@ -4,9 +4,9 @@
 
     Dede's window: a top bar carrying the preset strip, the global controls
     (gear) and help buttons; the spectrum view where the regions are drawn
-    (the whole point of the plugin); and on its left a column with one row per
-    region, the four levels (dry, delays, reverb return, output) and the
-    output meter.
+    (the whole point of the plugin), with the selected region's settings
+    docked under it; and on its left a column with one row per region, the
+    four levels (dry, delays, reverb return, output) and the output meter.
 
     Author: Olivier Doaré, github.com/odoare
     (c) 2026 Olivier Doaré
@@ -22,6 +22,8 @@
 #include "RegionColumn.h"
 #include "GlobalPanel.h"
 #include "OutputMeter.h"
+
+class RegionPanel;
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -66,8 +68,9 @@ private:
     /** First slot whose "on" parameter is false, or -1 when all are in use. */
     int findFreeSlot() const;
 
-    /** Opens one region's delay settings in a callout anchored on it. */
-    void showRegionPanel (int slot);
+    /** Docks the settings of region `slot` under the spectrum, or the hint
+        to select one with -1. Does nothing when that one is already shown. */
+    void showRegion (int slot);
 
     /** Opens the full preset browser in a callout under the top bar. The
         compact strip there only walks the list; saving, renaming and deleting
@@ -112,8 +115,14 @@ private:
     RegionColumn column { processor };
     OutputMeter outputMeter { processor };
 
-    /** The region popup's tab last shown, so the next one opens on it. Per
-        editor session, not saved. The popup is a child of this editor, so the
+    /** The selected region's settings, under the spectrum; null when none
+        is selected (the dock then shows a hint, painted by the editor). A new
+        panel is made for each selection. */
+    std::unique_ptr<RegionPanel> regionPanel;
+    juce::Rectangle<int> dockArea;
+
+    /** The dock's tab last shown, so the next region opens on it. Per editor
+        session, not saved. The panel is a child of this editor, so the
         reference it keeps never outlives this. */
     int lastRegionTab = 0;
 
