@@ -22,8 +22,7 @@
 #include "RegionColumn.h"
 #include "GlobalPanel.h"
 #include "OutputMeter.h"
-
-class RegionPanel;
+#include "RegionPanel.h"
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -56,6 +55,11 @@ private:
     fxme::SpectrumRegionEditor::Region regionFromParameters (int slot) const;
 
     void setParameter (const juce::String& id, float value);
+
+    /** Copies every setting of region `source` (but its solo) into a free
+        slot and puts it in use; returns that slot, or -1 when none is free.
+        For the view's Ctrl-drag. */
+    int duplicateRegion (int source);
 
     /** Deletes the region in `slot` and releases the slot (from the view's
         Delete key or the column's Free button). */
@@ -121,10 +125,10 @@ private:
     std::unique_ptr<RegionPanel> regionPanel;
     juce::Rectangle<int> dockArea;
 
-    /** The dock's tab last shown, so the next region opens on it. Per editor
-        session, not saved. The panel is a child of this editor, so the
-        reference it keeps never outlives this. */
-    int lastRegionTab = 0;
+    /** What the dock remembers from one region to the next (its tab, where
+        switched-off lines were). Per editor session, not saved. The panel is
+        a child of this editor, so the reference it keeps never outlives this. */
+    RegionPanel::Session regionSession;
 
     // The four levels, under the region rows. The reverb's other controls,
     // the engine and the gate are in the global controls callout.

@@ -26,12 +26,12 @@ namespace
     /** Knob widths across the panel: the dynamics page's row (the widest
         tab) and the strip. Every tab's knobs and the strip's share one width. */
     constexpr int tabUnits   = 9;
-    constexpr int stripUnits = 5;
+    constexpr int stripUnits = 3;
     constexpr int minKnobWidth = 58;
 
-    constexpr int positionRowHeight = 24;   // a degrade stage's position selector
+    constexpr int selectorWidth = 56;       // a degrade stage's position selector
 
-    constexpr int pageHeight = pagePadding + knobHeight + footerHeight + positionRowHeight;
+    constexpr int pageHeight = pagePadding + knobHeight + footerHeight;
 
     /** Alpha of the controls of a degrade stage that is switched off: still
         editable (so a stage can be set up before it is heard), visibly idle. */
@@ -59,18 +59,84 @@ namespace
         auto* p = processor.getAPVTS().getRawParameterValue (ids::region (slot, suffix));
         return p != nullptr ? p->load() : 0.0f;
     }
+
+    /** Sets region `slot`'s `suffix` parameter as one host gesture. */
+    void setParameterValue (DedeAudioProcessor& processor, int slot, const char* suffix, float value)
+    {
+        if (auto* p = processor.getAPVTS().getParameter (ids::region (slot, suffix)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (value));
+            p->endChangeGesture();
+        }
+    }
+
+    constexpr int switchHeight = 22;   // a stage's switch, over its controls
+
+    /** A stage switch, drawn like the parameter-bound ones, whose state is
+        not a parameter of its own: it follows one (a line parked at the end
+        of its range, a level at its bottom). Clicking it calls switchOff or
+        switchOn, which move that parameter; refresh() reads it back. */
+    class SlavedSwitch : public juce::ToggleButton
+    {
+    public:
+        SlavedSwitch (const juce::String& text, juce::Colour accent)
+        {
+            setButtonText (text);
+            setColour (juce::ToggleButton::tickColourId, accent);
+            setClickingTogglesState (false);
+            onClick = [this]
+            {
+                const auto action = getToggleState() ? switchOff : switchOn;
+                if (action != nullptr)
+                    action();
+                refresh();
+            };
+        }
+
+        std::function<bool()> isOn;
+        std::function<void()> switchOn, switchOff;
+
+        /** Follows the parameter; returns true when the state changed. */
+        bool refresh()
+        {
+            const bool on = isOn != nullptr && isOn();
+            if (on == getToggleState())
+                return false;
+            setToggleState (on, juce::dontSendNotification);
+            return true;
+        }
+    };
 }
 
 //==============================================================================
 /** The region's delay: its two times and how they are read, and its three
-    feedback gains. Its output levels are in the panel's strip. */
+    feedback gains. Its output levels are in the panel's strip. Its switch
+    follows the strip's Delay level: off at the bottom (-inf), where it
+    parks it, remembering where it was. */
 class RegionPanel::DelayPage : public juce::Component,
                                private juce::Timer
 {
 public:
-    DelayPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour)
-        : processor (p), slot (regionSlot)
+    DelayPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour, Session& sessionToUse)
+        : processor (p), slot (regionSlot), session (sessionToUse), delaySwitch ("Delay", accentColour)
     {
+        delaySwitch.setTooltip ("The region's repeats. Follows the Delay level (in the strip): "
+                                "off at -inf. Switching it off parks the level there, switching "
+                                "it on brings it back");
+        delaySwitch.isOn = [this] { return parameterValue (processor, slot, ids::rgDly) > minFeedbackDb; };
+        delaySwitch.switchOff = [this]
+        {
+            session.delayDb[slot] = parameterValue (processor, slot, ids::rgDly);
+            setParameterValue (processor, slot, ids::rgDly, minFeedbackDb);
+        };
+        delaySwitch.switchOn = [this]
+        {
+            const float db = session.delayDb[slot];
+            setParameterValue (processor, slot, ids::rgDly, db > minFeedbackDb ? db : 0.0f);
+        };
+        addAndMakeVisible (delaySwitch);
+
         const auto knob = [this, accentColour] (const char* suffix, const char* label)
         {
             return makeKnob (*this, processor, slot, suffix, label, accentColour);
@@ -91,12 +157,13 @@ public:
             processor.getAPVTS(), ids::region (slot, ids::rgMode), modeBox);
 
         timeText = resolvedTimeText();
+        updateIdle();
         startTimerHz (10);
     }
 
     void paint (juce::Graphics& g) override
     {
-        g.setColour (theme::dimText);
+        g.setColour (theme::dimText.withMultipliedAlpha (shownAlpha));
         g.setFont (juce::Font (juce::FontOptions (11.0f)));
         g.drawText ("Time mode", modeBox.getBounds().translated (0, -16).withHeight (14),
                     juce::Justification::centred);
@@ -107,6 +174,7 @@ public:
     {
         auto area = getLocalBounds();
         area.removeFromTop (pagePadding);
+        delaySwitch.setBounds (area.removeFromTop (switchHeight).reduced (6, 0));
 
         // Five knobs, then the mode and what the times come to, two knobs
         // wide, on the right.
@@ -126,8 +194,25 @@ public:
 private:
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
+    /** Off, the delay's controls are dimmed, still editable. */
+    void updateIdle()
+    {
+        delaySwitch.refresh();
+        const float alpha = delaySwitch.getToggleState() ? 1.0f : idleAlpha;
+        for (auto* c : std::initializer_list<juce::Component*> { timeL.get(), timeR.get(), fbL.get(),
+                                                                  fbR.get(), fbX.get(), &modeBox })
+            c->setAlpha (alpha);
+        if (alpha != shownAlpha)
+        {
+            shownAlpha = alpha;
+            repaint();   // the caption and the read-out
+        }
+    }
+
     void timerCallback() override
     {
+        updateIdle();
+
         const auto text = resolvedTimeText();
         if (text == timeText)
             return;
@@ -164,7 +249,10 @@ private:
 
     DedeAudioProcessor& processor;
     const int slot;
+    Session& session;
 
+    SlavedSwitch delaySwitch;
+    float shownAlpha = 1.0f;
     std::unique_ptr<fxme::FxmeSlider> timeL, timeR, fbL, fbR, fbX;
     juce::ComboBox modeBox;
     std::unique_ptr<ComboBoxAttachment> modeAttachment;
@@ -176,15 +264,60 @@ private:
 /** The region's dynamics around its two lines on the spectrum view: under
     the gate (the lower, dashed line) a downward expander, over the ceiling
     (the upper, dotted line) a compressor or a cut. The lines' levels are
-    dragged on the view; this page sets what happens around them. A group is
-    dimmed while its line is parked at the end of its range (off). */
+    dragged on the view; this page sets what happens around them. Each group
+    has a switch that follows its line: off while it is parked at the end of
+    its range, where switching off parks it (remembering where it was). */
 class RegionPanel::DynamicsPage : public juce::Component,
                                   private juce::Timer
 {
 public:
-    DynamicsPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour)
-        : processor (p), slot (regionSlot), accent (accentColour)
+    DynamicsPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour, Session& sessionToUse)
+        : processor (p), slot (regionSlot), accent (accentColour), session (sessionToUse),
+          gateSwitch ("Gate", accentColour), ceilingSwitch ("Ceiling", accentColour)
     {
+        // Brought back, a line keeps clear of the other one (when that one
+        // is on), as dragging them on the view would.
+        constexpr float clearance = 6.0f;
+        const auto gateDb = [this] { return parameterValue (processor, slot, ids::rgGate); };
+        const auto ceilDb = [this] { return parameterValue (processor, slot, ids::rgCeil); };
+
+        gateSwitch.setTooltip ("Gate, the lower (dashed) line: under it, a downward expander "
+                               "(a hard gate by default). Off while its line is at the bottom; "
+                               "switching it off parks it there, switching it on brings it back");
+        gateSwitch.isOn = [gateDb] { return gateDb() > gateFloorDb; };
+        gateSwitch.switchOff = [this, gateDb]
+        {
+            session.gateDb[slot] = gateDb();
+            setParameterValue (processor, slot, ids::rgGate, gateFloorDb);
+        };
+        gateSwitch.switchOn = [this, ceilDb]
+        {
+            float db = session.gateDb[slot];
+            if (ceilDb() < gateCeilDb)
+                db = juce::jmin (db, ceilDb() - clearance);
+            setParameterValue (processor, slot, ids::rgGate, juce::jlimit (gateFloorDb + 1.0f, gateCeilDb - 1.0f, db));
+        };
+
+        ceilingSwitch.setTooltip ("Ceiling, the upper (dotted) line: over it, a compressor, a "
+                                  "limiter or a cut (the default). Off while its line is at the top; "
+                                  "switching it off parks it there, switching it on brings it back");
+        ceilingSwitch.isOn = [ceilDb] { return ceilDb() < gateCeilDb; };
+        ceilingSwitch.switchOff = [this, ceilDb]
+        {
+            session.ceilingDb[slot] = ceilDb();
+            setParameterValue (processor, slot, ids::rgCeil, gateCeilDb);
+        };
+        ceilingSwitch.switchOn = [this, gateDb]
+        {
+            float db = session.ceilingDb[slot];
+            if (gateDb() > gateFloorDb)
+                db = juce::jmax (db, gateDb() + clearance);
+            setParameterValue (processor, slot, ids::rgCeil, juce::jlimit (gateFloorDb + 1.0f, gateCeilDb - 1.0f, db));
+        };
+
+        addAndMakeVisible (gateSwitch);
+        addAndMakeVisible (ceilingSwitch);
+
         const auto knob = [this] (const char* suffix, const char* label)
         {
             return makeKnob (*this, processor, slot, suffix, label, accent);
@@ -207,17 +340,6 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
-        const auto heading = [&g, this] (juce::Rectangle<int> area, const juce::String& text, bool on)
-        {
-            g.setColour (on ? accent : theme::dimText);
-            g.drawText (text, area.reduced (6, 0), juce::Justification::centredLeft);
-        };
-        heading (gateHeading, gateOn ? "Gate (lower line): expander"
-                                     : "Gate: off (its line is at the bottom)", gateOn);
-        heading (ceilingHeading, ceilingOn ? "Ceiling (upper line): " + ceilingMode()
-                                           : "Ceiling: off (its line is at the top)", ceilingOn);
-
         g.setColour (theme::panelLine);
         g.fillRect (juce::Rectangle<float> ((float) separatorX, (float) pagePadding + 4.0f,
                                             1.0f, (float) getHeight() - pagePadding - 8.0f));
@@ -232,9 +354,8 @@ public:
         auto gateArea = area.removeFromLeft (unit * (int) gate.size());
         separatorX = area.getX();
 
-        constexpr int headingHeight = 22;
-        gateHeading    = gateArea.removeFromTop (headingHeight);
-        ceilingHeading = area.removeFromTop (headingHeight);
+        gateSwitch.setBounds (gateArea.removeFromTop (switchHeight).reduced (6, 0));
+        ceilingSwitch.setBounds (area.removeFromTop (switchHeight).reduced (6, 0));
 
         const auto row = [unit] (juce::Rectangle<int> r, std::vector<std::unique_ptr<fxme::FxmeSlider>>& knobs)
         {
@@ -256,35 +377,125 @@ private:
         return isCeilingCut (v) ? "cut" : v >= infiniteRatio - 0.5f ? "limiter" : "compressor";
     }
 
-    /** A line parked at the end of its range is off: its group is dimmed. */
+    /** A line parked at the end of its range is off: its switch says so
+        and its group is dimmed. The switch also names what the group is. */
     void updateIdle()
     {
-        const bool gateNow    = parameterValue (processor, slot, ids::rgGate) > gateFloorDb;
-        const bool ceilingNow = parameterValue (processor, slot, ids::rgCeil) < gateCeilDb;
-        const juce::String mode = ceilingMode();
+        gateSwitch.refresh();
+        ceilingSwitch.refresh();
+        const bool gateOn = gateSwitch.getToggleState(), ceilingOn = ceilingSwitch.getToggleState();
 
-        if (gateNow == gateOn && ceilingNow == ceilingOn && mode == shownMode)
-            return;
+        const juce::String gateText    = gateOn ? "Gate: expander" : "Gate";
+        const juce::String ceilingText = ceilingOn ? "Ceiling: " + ceilingMode() : "Ceiling";
+        if (gateSwitch.getButtonText() != gateText)
+            gateSwitch.setButtonText (gateText);
+        if (ceilingSwitch.getButtonText() != ceilingText)
+            ceilingSwitch.setButtonText (ceilingText);
 
-        gateOn = gateNow;
-        ceilingOn = ceilingNow;
-        shownMode = mode;
         for (auto& k : gate)
             k->setAlpha (gateOn ? 1.0f : idleAlpha);
         for (auto& k : ceiling)
             k->setAlpha (ceilingOn ? 1.0f : idleAlpha);
-        repaint();
     }
 
     DedeAudioProcessor& processor;
     const int slot;
     const juce::Colour accent;
+    Session& session;
 
+    SlavedSwitch gateSwitch, ceilingSwitch;
     std::vector<std::unique_ptr<fxme::FxmeSlider>> gate, ceiling;
-    juce::Rectangle<int> gateHeading, ceilingHeading;
     int separatorX = 0;
-    bool gateOn = true, ceilingOn = true;
-    juce::String shownMode;
+};
+
+//==============================================================================
+/** Where a degrade stage runs: three small radio buttons stacked vertically
+    (Before, In loop, After), left of the stage's knobs, bound to its position
+    choice parameter. */
+class PositionSelector : public juce::Component,
+                         public juce::SettableTooltipClient
+{
+public:
+    PositionSelector (juce::RangedAudioParameter& parameter, juce::Colour accentColour)
+        : accent (accentColour),
+          attachment (parameter, [this] (float v) { setSelected (juce::roundToInt (v)); })
+    {
+        setTooltip ("Where this stage runs: before the delay (the region's Dry hears it "
+                    "too), in the delay loop (the first echo, then again on every "
+                    "repeat), or after the delay (on the repeats)");
+        attachment.sendInitialUpdate();
+    }
+
+    /** The rows' height together, for centring. */
+    static constexpr int rowHeight = 15;
+    static int preferredHeight() { return rowHeight * degradePositionNames.size(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.setFont (juce::Font (juce::FontOptions (10.5f)));
+        for (int i = 0; i < degradePositionNames.size(); ++i)
+        {
+            auto row = rowArea (i);
+            const bool on = i == selected, hot = i == hovered;
+
+            const auto dot = row.removeFromLeft (rowHeight).toFloat().withSizeKeepingCentre (9.0f, 9.0f);
+            g.setColour (on ? accent : (hot ? theme::dimText : theme::panelLine.brighter (0.3f)));
+            g.drawEllipse (dot, 1.2f);
+            if (on)
+                g.fillEllipse (dot.reduced (2.2f));
+
+            g.setColour (on ? theme::text : (hot ? theme::text.withAlpha (0.8f) : theme::dimText));
+            g.drawText (degradePositionNames[i], row.withTrimmedLeft (2),
+                        juce::Justification::centredLeft, false);
+        }
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override { setHovered (rowAt (e.y)); }
+    void mouseExit (const juce::MouseEvent&) override   { setHovered (-1); }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        const int row = rowAt (e.y);
+        if (row >= 0 && row != selected)
+            attachment.setValueAsCompleteGesture ((float) row);
+    }
+
+private:
+    juce::Rectangle<int> rowArea (int i) const
+    {
+        const int top = (getHeight() - preferredHeight()) / 2;
+        return { 0, top + i * rowHeight, getWidth(), rowHeight };
+    }
+
+    int rowAt (int y) const
+    {
+        for (int i = 0; i < degradePositionNames.size(); ++i)
+            if (y >= rowArea (i).getY() && y < rowArea (i).getBottom())
+                return i;
+        return -1;
+    }
+
+    void setSelected (int index)
+    {
+        if (index != selected)
+        {
+            selected = index;
+            repaint();
+        }
+    }
+
+    void setHovered (int index)
+    {
+        if (index != hovered)
+        {
+            hovered = index;
+            repaint();
+        }
+    }
+
+    const juce::Colour accent;
+    int selected = -1, hovered = -1;
+    juce::ParameterAttachment attachment;   // last: it calls setSelected while constructed
 };
 
 //==============================================================================
@@ -308,7 +519,7 @@ public:
     };
 
     /** One stage: its switch, its title, its controls, and optionally the
-        choice of where it runs, shown under its controls. */
+        choice of where it runs, left of its controls. */
     struct Stage
     {
         const char* onSuffix;
@@ -356,17 +567,11 @@ public:
             }
 
             if (spec.positionSuffix != nullptr)
-            {
-                stage->positionBox = std::make_unique<juce::ComboBox>();
-                stage->positionBox->addItemList (degradePositionNames, 1);
-                stage->positionBox->setTooltip ("Where this stage runs: before the delay (the region's "
-                                                "Dry hears it too), in the delay loop (the first echo, "
-                                                "then again on every repeat), or after the delay");
-                theme::styleCombo (*stage->positionBox, accentColour);
-                addAndMakeVisible (*stage->positionBox);
-                stage->attachments.push_back (std::make_unique<ComboBoxAttachment> (
-                    apvts, ids::region (slot, spec.positionSuffix), *stage->positionBox));
-            }
+                if (auto* position = apvts.getParameter (ids::region (slot, spec.positionSuffix)))
+                {
+                    stage->positionSelector = std::make_unique<PositionSelector> (*position, accentColour);
+                    addAndMakeVisible (*stage->positionSelector);
+                }
 
             stages.push_back (std::move (stage));
         }
@@ -410,36 +615,53 @@ public:
 
         // Every control gets the same width, so a stage with two controls is
         // twice as wide as one with one.
-        int totalControls = 0;
-        for (const auto& stage : stages)
-            totalControls += juce::jmax (1, (int) stage->controls.size());
+        // The position selectors have a fixed width; the rest is shared out
+        // in units, a knob one, a choice box a little more (its text needs
+        // it more than a knob's disc does).
+        constexpr float boxUnits = 1.4f;
+        const auto unitsOf = [] (const juce::Component& c)
+        {
+            return dynamic_cast<const juce::ComboBox*> (&c) != nullptr ? boxUnits : 1.0f;
+        };
+        const auto stageUnits = [&unitsOf] (const StageUi& stage)
+        {
+            float units = 0.0f;
+            for (const auto& c : stage.controls)
+                units += unitsOf (*c);
+            return juce::jmax (1.0f, units);
+        };
 
-        const int unit = area.getWidth() / juce::jmax (1, totalControls);
-        constexpr int switchHeight = 22;
+        float totalUnits = 0.0f;
+        int selectors = 0;
+        for (const auto& stage : stages)
+        {
+            totalUnits += stageUnits (*stage);
+            selectors += stage->positionSelector != nullptr ? 1 : 0;
+        }
+
+        const float unit = (float) (area.getWidth() - selectors * selectorWidth) / totalUnits;
 
         separators.clear();
         for (size_t i = 0; i < stages.size(); ++i)
         {
             auto& stage = *stages[i];
-            const int n = juce::jmax (1, (int) stage.controls.size());
-            auto column = i + 1 == stages.size() ? area : area.removeFromLeft (n * unit);
+            const int width = juce::roundToInt (stageUnits (stage) * unit)
+                            + (stage.positionSelector != nullptr ? selectorWidth : 0);
+            auto column = i + 1 == stages.size() ? area : area.removeFromLeft (width);
 
             if (i > 0)
                 separators.push_back (column.getX());
 
             stage.onSwitch->setBounds (column.removeFromTop (switchHeight).reduced (6, 0));
 
-            if (stage.positionBox != nullptr)
-            {
-                auto row = column.removeFromBottom (positionRowHeight);
-                stage.positionBox->setBounds (row.withSizeKeepingCentre (juce::jmin (110, row.getWidth() - 8), 20));
-            }
+            if (stage.positionSelector != nullptr)
+                stage.positionSelector->setBounds (column.removeFromLeft (selectorWidth).withTrimmedLeft (6));
 
             for (auto& c : stage.controls)
             {
-                auto cell = column.removeFromLeft (unit);
+                auto cell = column.removeFromLeft (juce::roundToInt (unitsOf (*c) * unit));
                 if (dynamic_cast<juce::ComboBox*> (c.get()) != nullptr)
-                    c->setBounds (cell.withSizeKeepingCentre (juce::jmin (110, cell.getWidth() - 8), 20));
+                    c->setBounds (cell.withSizeKeepingCentre (juce::jmin (110, cell.getWidth() - 6), 20));
                 else
                     c->setBounds (cell.reduced (3));
             }
@@ -455,7 +677,7 @@ private:
         std::unique_ptr<fxme::FxmeButton> onSwitch;
         std::vector<std::unique_ptr<juce::Component>> controls;
         std::vector<juce::String> labels;   // one per control
-        std::unique_ptr<juce::ComboBox> positionBox;
+        std::unique_ptr<PositionSelector> positionSelector;
         std::vector<std::unique_ptr<ComboBoxAttachment>> attachments;
     };
 
@@ -480,8 +702,8 @@ private:
                     c->setAlpha (alpha);
                     captionsChanged = true;
                 }
-            if (stage->positionBox != nullptr && stage->positionBox->getAlpha() != alpha)
-                stage->positionBox->setAlpha (alpha);
+            if (stage->positionSelector != nullptr && stage->positionSelector->getAlpha() != alpha)
+                stage->positionSelector->setAlpha (alpha);
         }
 
         if (captionsChanged)
@@ -498,9 +720,10 @@ private:
 };
 
 //==============================================================================
-/** The region's output, beside the tabs and always in view: its level and
-    pan (the round handle on the spectrum), its own band undelayed (Dry), its
-    repeats (Delay), and the send to the shared reverb taken after those two. */
+/** The region's output, beside the tabs and always in view: its own band
+    undelayed (Dry), its repeats (Delay), and the send to the shared reverb
+    taken after those two. Its gain and pan are the line and the round handle
+    on the spectrum. */
 class RegionPanel::Strip : public juce::Component
 {
 public:
@@ -513,27 +736,22 @@ public:
             return k;
         };
 
-        gain   = knob (ids::rgGain, "Gain",   "The region's level: also the round handle's height");
-        pan    = knob (ids::rgPan,  "Pan",    "The region's pan: also the round handle's place across it");
         dry    = knob (ids::rgDry,  "Dry",    "The region's own band, not delayed (panned, through the "
                                               "stages placed before the delay), on top of the global dry");
         delay  = knob (ids::rgDly,  "Delay",  "The region's repeats");
         reverb = knob (ids::rgSend, "Reverb", "Send to the shared reverb, taken after Dry and Delay");
-
-        gain->setCentralValue (0.0);
-        pan->setCentralValue (0.0);
     }
 
     void resized() override
     {
         auto row = getLocalBounds().removeFromTop (knobHeight);
         const int w = row.getWidth() / stripUnits;
-        for (auto* k : { gain.get(), pan.get(), dry.get(), delay.get(), reverb.get() })
+        for (auto* k : { dry.get(), delay.get(), reverb.get() })
             k->setBounds (row.removeFromLeft (w).reduced (3));
     }
 
 private:
-    std::unique_ptr<fxme::FxmeSlider> gain, pan, dry, delay, reverb;
+    std::unique_ptr<fxme::FxmeSlider> dry, delay, reverb;
 };
 
 //==============================================================================
@@ -561,12 +779,19 @@ private:
 };
 
 //==============================================================================
-RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& lastTab)
+RegionPanel::Session::Session()
+{
+    std::fill (std::begin (gateDb),    std::end (gateDb),    -60.0f);
+    std::fill (std::begin (ceilingDb), std::end (ceilingDb), -12.0f);
+    std::fill (std::begin (delayDb),   std::end (delayDb),   0.0f);
+}
+
+RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, Session& session)
     : slot (regionSlot), accent (theme::regionColour (regionSlot)),
-      tabs (std::make_unique<Tabs> (lastTab)),
+      tabs (std::make_unique<Tabs> (session.lastTab)),
       strip (std::make_unique<Strip> (processor, regionSlot, accent))
 {
-    const int wanted = lastTab;
+    const int wanted = session.lastTab;
 
     tabs->setTabBarDepth (tabBarDepth);
     tabs->setOutline (0);
@@ -614,7 +839,7 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     // The tabs in signal order: the dynamics act on the band as it is cut
     // out, the spectral effects inside the same frame, then the delay and
     // the degrade stages placed around it.
-    tabs->addTab ("Dynamics", theme::panel, new DynamicsPage (processor, slot, accent), true);
+    tabs->addTab ("Dynamics", theme::panel, new DynamicsPage (processor, slot, accent, session), true);
 
     // Pitch, freeze and blur need the FFT: in the Live engine the tab is
     // dimmed and says so, its settings kept for when the engine comes back.
@@ -625,7 +850,7 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, int& la
     tabs->addTab (processor.isLiveEngine() ? "Spectral (off in Live)" : "Spectral",
                   theme::panel, spectralPage, true);
 
-    tabs->addTab ("Delay",   theme::panel, new DelayPage  (processor, slot, accent), true);
+    tabs->addTab ("Delay",   theme::panel, new DelayPage  (processor, slot, accent, session), true);
     tabs->addTab ("Degrade", theme::panel, new StagesPage (processor, slot, accent, degrade), true);
 
     tabs->setCurrentTabIndex (juce::jlimit (0, tabs->getNumTabs() - 1, wanted));
@@ -662,8 +887,9 @@ void RegionPanel::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.55f));
     g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
 
-    // The strip's heading, level with the tab bar: which region this is.
-    auto heading = stripArea().removeFromTop (tabBarDepth).reduced (3, 2);
+    // The strip's heading, level with the tabs' switches: which region this is.
+    auto heading = stripArea().withTrimmedTop (tabBarDepth + pagePadding)
+                              .removeFromTop (switchHeight).reduced (3, 1);
     auto chip = heading.removeFromLeft (heading.getHeight() + 4).toFloat();
     g.setColour (accent);
     g.fillRoundedRectangle (chip, 3.0f);
@@ -673,7 +899,7 @@ void RegionPanel::paint (juce::Graphics& g)
 
     g.setColour (accent);
     g.setFont (juce::Font (juce::FontOptions (13.0f).withStyle ("Bold")));
-    g.drawText ("Region " + juce::String (slot + 1) + " output", heading.withTrimmedLeft (8),
+    g.drawText ("Output", heading.withTrimmedLeft (8),
                 juce::Justification::centredLeft);
 
     // Between the tabs and the strip.
@@ -689,5 +915,5 @@ void RegionPanel::resized()
     auto area = getLocalBounds().reduced (panelMargin);
     const auto stripBounds = stripArea();
     tabs->setBounds (area.withRight (stripBounds.getX() - stripGap));
-    strip->setBounds (stripBounds.withTrimmedTop (tabBarDepth + pagePadding));
+    strip->setBounds (stripBounds.withTrimmedTop (tabBarDepth + pagePadding + switchHeight));
 }

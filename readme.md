@@ -21,12 +21,18 @@ The spectrum view is the whole interface.
   to move the whole band.
 - The dashed line is the gate: what rises above it passes, the rest of the band
   is dropped. Drag it up into the trace and only the peaks get through.
-- The round handle sets the region's gain (up and down) and its pan (left and
-  right, across the region's own width).
+- The solid line sets the region's gain (drag it up and down), the round
+  handle on it its pan (drag it left and right, across the region's width).
+  Each moves only its own value.
 - Select a region (click it, or its row in the column) and its settings show
   under the spectrum, where they stay while you drag its lines: tabs for its
   dynamics, spectral effects, delay and degrade stages, and beside them its
-  output (gain, pan, its own dry band, its repeats, the reverb send).
+  output (its own dry band, its repeats, the reverb send).
+- Ctrl+drag a region to copy it, every setting with it, and place the copy.
+  A moved region's borders stick to the other regions' borders, as a dragged
+  border does, so a copy can be set right beside its original.
+- Double-click a line (gate, ceiling, gain) or the pan handle to reset it;
+  the gate and the ceiling go back to off.
 - Delete or Backspace removes the selected region. Up to eight at once.
 
 Delay times read three ways, chosen per region: seconds, a proportion of a

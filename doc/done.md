@@ -4,6 +4,22 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Copy-drag, magnetic moves, double-click reset (2026-10-02)
+
+- **Magnetic borders when moving a region**: the nearer of its two borders
+  sticks to another region's border within the same 8 px as a dragged border,
+  the band keeping its width, with the same guide line.
+- **Ctrl+drag a region copies it**: on the first move, every setting of the
+  region but its solo goes to a free slot (`on` set last), and the copy is
+  what is dragged, magnetic too, so it can be laid right beside its original.
+  Ctrl+click alone copies nothing; nothing happens with no free slot. The
+  cursor shows a copy while Ctrl is held over a region.
+- **Double-click resets**: on the gate or the ceiling line (back to off), the
+  gain line (0 dB) or the pan handle (centre), as one host gesture. Elsewhere
+  in the plot a double click still resets the view.
+- **FxmeTools:** `SpectrumRegionEditor` gains `onRegionDuplicate` and
+  `onHandleDoubleClicked`, and snaps a region moved whole.
+
 ## Region settings docked under the spectrum; output strip (2026-10-01)
 
 The region popup (a callout) closed on any click outside it, so a gate or
@@ -13,9 +29,29 @@ and the dock share it); with nothing selected the dock says how to select or
 draw a region. The tab last shown is kept from one region to the next.
 
 - **Output strip**, on the right of the dock, always in view whatever the
-  tab: Gain, Pan (both also the round handle), Dry, Delay, Reverb send. Dry
-  and the other two output levels left the Delay tab, which keeps the times,
-  their mode (now captioned, the readout under it) and the feedback.
+  tab: Dry, Delay, Reverb send. They left the Delay tab, which keeps the
+  times, their mode (now captioned, the readout under it) and the feedback.
+  Gain and pan stay on the spectrum only.
+- **Gain and pan dragged separately**: the solid line moves the gain only
+  (up and down), the round handle on it the pan only (left and right). Either
+  used to move both, so setting one nudged the other. In FxmeTools,
+  `SpectrumRegionEditor::Handle::gainPan` became `gain` and `pan` (breaking,
+  Dede the only consumer); the host gesture covers just the one parameter.
+- **Degrade positions** are three small radio buttons (Before, In loop,
+  After) stacked left of each stage's knobs, with the explanation as a
+  tooltip, instead of a choice box under them: the dock is 24 px shorter.
+  Choice boxes in a stage get 1.4 knob widths, so Saturation's Model reads.
+- **Switches on Dynamics and Delay**, drawn like the Spectral and Degrade
+  ones but with no parameter of their own: Gate and Ceiling follow their
+  lines (off at the bottom and at the top), Delay follows the strip's Delay
+  level (off at -inf). Switching one off parks its value there; switching it
+  on brings it back where it was (remembered per region for the editor's
+  life; a line never dragged comes back at -60 or -12 dB, Delay at 0 dB),
+  clear of the other line by 6 dB when that one is on. The Gate and Ceiling
+  switches name their mode (expander; compressor, limiter or cut) in place of
+  the old headings. Off, a tab's controls are dimmed, still editable.
+- **The strip** (region number, "Output", its three knobs) sits level with
+  the tabs' switches and knobs instead of the tab bar.
 - **Window**: default 1170 x 800 (was 620 high), minimum 1080 x 660 (was
   950 x 520), so the dynamics row and the strip keep readable knobs and the
   spectrum keeps its height over the dock.

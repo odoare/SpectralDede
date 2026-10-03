@@ -32,13 +32,16 @@ namespace
         "    gate an expander (a hard gate by default, with a range), over the\n"
         "    ceiling a compressor, a limiter or a cut (the default), each with\n"
         "    its knee, attack and release; per bin in Spectral, a multiband\n"
-        "    compressor / expander in Live\n"
-        "  drag the round handle for gain (up/down) and pan (left/right)\n"
+        "    compressor / expander in Live. Its Gate and Ceiling switches follow\n"
+        "    the lines (off at the end of their range): switching one off parks\n"
+        "    its line there, switching it on brings it back where it was\n"
+        "  drag the solid line up and down for the gain, the round handle on it\n"
+        "    left and right for the pan\n"
         "  select a region (click it, or its row in the column) to show its\n"
         "    settings under the spectrum, where they stay while its lines and\n"
         "    handles are dragged. On the right, always in view, its output:\n"
-        "    gain, pan, Dry, Delay and the reverb send. On the left, tabs in\n"
-        "    signal order: dynamics;\n"
+        "    Dry, Delay and the reverb send. On the left, tabs in signal\n"
+        "    order: dynamics;\n"
         "    spectral (pitch in semitones, freeze tonal or wash, held, retriggered\n"
         "    or gated on and off at a synced rate, with a stereo width; blur);\n"
         "    delay;\n"
@@ -51,6 +54,10 @@ namespace
         "    before the delay, but not delayed,\n"
         "    on top of the global dry; its reverb send takes Dry and Delay after\n"
         "    their levels\n"
+        "  ctrl+drag a region to copy it (every setting) and place the copy\n"
+        "  a moved region's borders stick to the other regions' borders too\n"
+        "  double-click a line (gate, ceiling, gain) or the pan handle to reset\n"
+        "    it (the gate and the ceiling to off)\n"
         "  Delete or Backspace removes the selected region\n\n"
         "Region column (one row per slot; click a row to select its region):\n"
         "  x frees the slot: the region is deleted, the slot can be drawn again\n"
@@ -64,7 +71,8 @@ namespace
         "what each side currently comes to in milliseconds.\n\n"
         "Spectrum view:\n"
         "  wheel zooms the level axis, ctrl+wheel the frequency axis\n"
-        "  alt+drag or middle-drag pans, double-click resets\n"
+        "  alt+drag or middle-drag pans, double-click resets (away\n"
+        "    from the lines and handles)\n"
         "  the view measures exactly as the gates do (same window size, peak\n"
         "    detector, no averaging), so a trace over a gate line passes it\n"
         "  in the Live engine the gates compare each band's whole level instead:\n"
@@ -282,7 +290,8 @@ void DedeAudioProcessorEditor::beginGesture (int slot,
         // gesture on both.
         case Handle::gate:
         case Handle::ceiling:   touched = { ids::rgGate, ids::rgCeil }; break;
-        case Handle::gainPan:   touched = { ids::rgGain, ids::rgPan }; break;
+        case Handle::gain:      touched = { ids::rgGain }; break;
+        case Handle::pan:       touched = { ids::rgPan }; break;
         case Handle::body:      touched = { ids::rgFLo, ids::rgFHi }; break;
         case Handle::none:
         default:                return;
@@ -331,6 +340,29 @@ void DedeAudioProcessorEditor::wireRegionEditor()
 
     spectrum.onRegionDelete = [this] (int slot) { freeSlot (slot); };
 
+    spectrum.onRegionDuplicate = [this] (int source) { return duplicateRegion (source); };
+
+    // A double click on a line or the pan handle: back to the parameter's
+    // default (for the gate and the ceiling that is off, at the end of the
+    // range).
+    spectrum.onHandleDoubleClicked = [this] (int slot, Handle handle)
+    {
+        const char* suffix = handle == Handle::gate    ? ids::rgGate
+                           : handle == Handle::ceiling ? ids::rgCeil
+                           : handle == Handle::gain    ? ids::rgGain
+                           : handle == Handle::pan     ? ids::rgPan : nullptr;
+        if (suffix == nullptr)
+            return;
+
+        if (auto* p = processor.getAPVTS().getParameter (ids::region (slot, suffix)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->getDefaultValue());
+            p->endChangeGesture();
+        }
+        refreshRegionsFromParameters (false);
+    };
+
     // The column and the view share the selection both ways.
     // The column, the view and the dock share the selection.
     spectrum.onSelectionChanged = [this] (int slot)
@@ -347,6 +379,35 @@ void DedeAudioProcessorEditor::wireRegionEditor()
 
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
+}
+
+int DedeAudioProcessorEditor::duplicateRegion (int source)
+{
+    const int copy = findFreeSlot();
+    if (copy < 0 || ! juce::isPositiveAndBelow (source, maxRegions))
+        return -1;
+
+    // Every parameter of the source slot, by its suffix, except solo (a
+    // listening aid, not a setting) and "on" (set last, once the copy is
+    // complete, so the slot is never in use half-copied).
+    const auto sourcePrefix = ids::region (source, "");
+    for (auto* param : processor.getParameters())
+    {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (param);
+        if (ranged == nullptr || ! ranged->getParameterID().startsWith (sourcePrefix))
+            continue;
+
+        const auto suffix = ranged->getParameterID().substring (sourcePrefix.length());
+        if (suffix == ids::rgSolo || suffix == ids::rgOn)
+            continue;
+
+        if (auto* target = processor.getAPVTS().getParameter (ids::region (copy, suffix.toRawUTF8())))
+            target->setValueNotifyingHost (ranged->getValue());
+    }
+
+    setParameter (ids::region (copy, ids::rgOn), 1.0f);
+    refreshRegionsFromParameters (true);
+    return copy;
 }
 
 void DedeAudioProcessorEditor::freeSlot (int slot)
@@ -382,7 +443,7 @@ void DedeAudioProcessorEditor::showRegion (int slot)
     regionPanel.reset();
     if (slot >= 0)
     {
-        regionPanel = std::make_unique<RegionPanel> (processor, slot, lastRegionTab);
+        regionPanel = std::make_unique<RegionPanel> (processor, slot, regionSession);
         addAndMakeVisible (*regionPanel);
         regionPanel->setBounds (dockArea);
     }

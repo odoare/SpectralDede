@@ -354,7 +354,7 @@ Dede's own `Source/`:
   the wiring between the region editor and the parameters.
 - `RegionPanel.{h,cpp}` — the selected region's settings, docked under the
   spectrum: tabs (Dynamics, Spectral, Delay, Degrade) and, always in view,
-  its output strip (gain, pan, Dry, Delay, reverb send).
+  its output strip (Dry, Delay, reverb send).
 
 ## The editor and the parameters
 
