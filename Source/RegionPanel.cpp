@@ -277,7 +277,7 @@ public:
     {
         // Brought back, a line keeps clear of the other one (when that one
         // is on), as dragging them on the view would.
-        constexpr float clearance = 6.0f;
+        static constexpr float clearance = 6.0f;
         const auto gateDb = [this] { return parameterValue (processor, slot, ids::rgGate); };
         const auto ceilDb = [this] { return parameterValue (processor, slot, ids::rgCeil); };
 
@@ -618,7 +618,7 @@ public:
         // The position selectors have a fixed width; the rest is shared out
         // in units, a knob one, a choice box a little more (its text needs
         // it more than a knob's disc does).
-        constexpr float boxUnits = 1.4f;
+        static constexpr float boxUnits = 1.4f;
         const auto unitsOf = [] (const juce::Component& c)
         {
             return dynamic_cast<const juce::ComboBox*> (&c) != nullptr ? boxUnits : 1.0f;
