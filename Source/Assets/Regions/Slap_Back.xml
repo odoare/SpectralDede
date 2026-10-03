@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Slap Back">
+  <Param key="mode" value="0"/>
+  <Param key="timel" value="0.085"/>
+  <Param key="timer" value="0.11"/>
+  <Param key="fbl" value="-30"/>
+  <Param key="fbr" value="-30"/>
+  <Param key="fbx" value="-60"/>
+  <Param key="dry" value="0"/>
+  <Param key="dly" value="-6"/>
+  <Param key="send" value="-60"/>
+</FxmeModulePreset>

@@ -133,7 +133,7 @@ public:
         delaySwitch.switchOn = [this]
         {
             const float db = session.delayDb[slot];
-            setParameterValue (processor, slot, ids::rgDly, db > minFeedbackDb ? db : 0.0f);
+            setParameterValue (processor, slot, ids::rgDly, db > minFeedbackDb ? db : defaultDelayLevelDb);
         };
         addAndMakeVisible (delaySwitch);
 
@@ -783,7 +783,7 @@ RegionPanel::Session::Session()
 {
     std::fill (std::begin (gateDb),    std::end (gateDb),    -60.0f);
     std::fill (std::begin (ceilingDb), std::end (ceilingDb), -12.0f);
-    std::fill (std::begin (delayDb),   std::end (delayDb),   0.0f);
+    std::fill (std::begin (delayDb),   std::end (delayDb),   defaultDelayLevelDb);
 }
 
 RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, Session& session)
@@ -857,6 +857,17 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, Session
     tabs->tracking = true;
     addAndMakeVisible (*tabs);
     addAndMakeVisible (*strip);
+
+    presetBar = std::make_unique<fxme::PresetBarComponent> (processor.getRegionPresets (slot));
+    presetBar->setAccentColour (accent);
+    presetBar->setBrowserButtonVisible (true);
+    presetBar->setBrowserSize (300, 360);
+    addAndMakeVisible (*presetBar);
+}
+
+juce::Rectangle<int> RegionPanel::headingArea() const
+{
+    return stripArea().withTrimmedTop (tabBarDepth + pagePadding).removeFromTop (switchHeight).reduced (3, 1);
 }
 
 int RegionPanel::preferredHeight()
@@ -887,20 +898,15 @@ void RegionPanel::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.55f));
     g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
 
-    // The strip's heading, level with the tabs' switches: which region this is.
-    auto heading = stripArea().withTrimmedTop (tabBarDepth + pagePadding)
-                              .removeFromTop (switchHeight).reduced (3, 1);
+    // The strip's heading, level with the tabs' switches: which region this
+    // is, then its preset bar (a child).
+    auto heading = headingArea();
     auto chip = heading.removeFromLeft (heading.getHeight() + 4).toFloat();
     g.setColour (accent);
     g.fillRoundedRectangle (chip, 3.0f);
     g.setColour (juce::Colours::black);
     g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
     g.drawText (juce::String (slot + 1), chip, juce::Justification::centred);
-
-    g.setColour (accent);
-    g.setFont (juce::Font (juce::FontOptions (13.0f).withStyle ("Bold")));
-    g.drawText ("Output", heading.withTrimmedLeft (8),
-                juce::Justification::centredLeft);
 
     // Between the tabs and the strip.
     const auto strip = stripArea();
@@ -916,4 +922,8 @@ void RegionPanel::resized()
     const auto stripBounds = stripArea();
     tabs->setBounds (area.withRight (stripBounds.getX() - stripGap));
     strip->setBounds (stripBounds.withTrimmedTop (tabBarDepth + pagePadding + switchHeight));
+
+    auto heading = headingArea();
+    heading.removeFromLeft (heading.getHeight() + 4 + 6);   // the chip and a gap
+    presetBar->setBounds (heading);
 }

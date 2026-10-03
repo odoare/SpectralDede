@@ -30,6 +30,11 @@
 namespace dede
 {
 
+/** The module name of region presets: their files' `module`, and their
+    folder, FX-Mechanics/Modules/SpectralRegion/Presets (see FxmeTools'
+    ModulePresetLibrary). */
+inline constexpr const char* regionPresetModule = "SpectralRegion";
+
 /** Number of region slots. Raising it is state-compatible (old presets simply
     leave the new slots off); lowering it is not. */
 inline constexpr int maxRegions = 8;
@@ -249,6 +254,16 @@ inline double freezeRateQuarters (int index) noexcept
 
 inline constexpr float minDelayValue = 0.001f;
 inline constexpr float maxDelayValue = 3.0f;
+
+/** A new region's delay: a slight echo synced to the host tempo, with a
+    little reverb, so the first region drawn already sounds like something
+    (its own band at 0 dB, the repeats and the send under it). Times in
+    DAW-sync mode, as fractions of a whole note. */
+inline constexpr float defaultTimeL         = 0.1875f;   // dotted 1/16
+inline constexpr float defaultTimeR         = 0.375f;    // dotted 1/8
+inline constexpr float defaultFeedbackDb    = -14.0f;
+inline constexpr float defaultDelayLevelDb  = -12.0f;
+inline constexpr float defaultReverbSendDb  = -18.0f;
 
 /** Analysis window of the spectral band splitter, as an FFT order: 11 is 2048
     samples, about 23 Hz of resolution and 43 ms of latency at 48 kHz. It is

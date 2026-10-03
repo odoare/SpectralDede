@@ -54,6 +54,8 @@ namespace
         "    before the delay, but not delayed,\n"
         "    on top of the global dry; its reverb send takes Dry and Delay after\n"
         "    their levels\n"
+        "  a region's presets (everything but its frequency range) are in the bar\n"
+        "    over its output knobs, \"...\" for the browser\n"
         "  ctrl+drag a region to copy it (every setting) and place the copy\n"
         "  a moved region's borders stick to the other regions' borders too\n"
         "  double-click a line (gate, ceiling, gain) or the pan handle to reset\n"
@@ -390,6 +392,9 @@ void DedeAudioProcessorEditor::resetSlotToDefaults (int slot)
             if (ranged->getParameterID().startsWith (prefix)
                 && ranged->getParameterID() != ids::region (slot, ids::rgOn))
                 ranged->setValueNotifyingHost (ranged->getDefaultValue());
+
+    // The defaults are no region preset.
+    processor.getRegionPresets (slot).setCurrentPreset ({}, false, false);
 }
 
 int DedeAudioProcessorEditor::duplicateRegion (int source)
@@ -415,6 +420,12 @@ int DedeAudioProcessorEditor::duplicateRegion (int source)
         if (auto* target = processor.getAPVTS().getParameter (ids::region (copy, suffix.toRawUTF8())))
             target->setValueNotifyingHost (ranged->getValue());
     }
+
+    // The copy shows the original's region preset, modified or not as the
+    // original is.
+    auto& from = processor.getRegionPresets (source);
+    processor.getRegionPresets (copy).setCurrentPreset (from.getCurrentPresetName(),
+                                                        from.currentPresetIsFactory(), from.isDirty());
 
     setParameter (ids::region (copy, ids::rgOn), 1.0f);
     refreshRegionsFromParameters (true);

@@ -355,7 +355,11 @@ Dede's own `Source/`:
   the wiring between the region editor and the parameters.
 - `RegionPanel.{h,cpp}` — the selected region's settings, docked under the
   spectrum: tabs (Dynamics, Spectral, Delay, Degrade) and, always in view,
-  its output strip (Dry, Delay, reverb send).
+  its output strip (Dry, Delay, reverb send), under the region's preset bar.
+  The region presets themselves are FxmeTools module presets (module
+  `SpectralRegion`): one `ModulePresetLibrary` and one `ModulePresetTarget`
+  per slot, owned by the processor (`getRegionPresets (slot)`); factory ones
+  in `Source/Assets/Regions`.
 
 ## The editor and the parameters
 

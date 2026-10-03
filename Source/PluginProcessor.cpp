@@ -170,24 +170,24 @@ DedeAudioProcessor::createParameterLayout()
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgTimeL), 1 }, slot + "Time L",
-            logRange (minDelayValue, maxDelayValue), 0.25f));
+            logRange (minDelayValue, maxDelayValue), defaultTimeL));
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgTimeR), 1 }, slot + "Time R",
-            logRange (minDelayValue, maxDelayValue), 0.375f));
+            logRange (minDelayValue, maxDelayValue), defaultTimeR));
 
         layout.add (std::make_unique<AudioParameterChoice> (
             ParameterID { id (ids::rgMode), 1 }, slot + "Mode",
-            modeNames, (int) DelayMode::seconds));
+            modeNames, (int) DelayMode::sync));
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgFbL), 1 }, slot + "Fb L",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), -12.0f,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), defaultFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgFbR), 1 }, slot + "Fb R",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), -12.0f,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), defaultFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         layout.add (std::make_unique<AudioParameterFloat> (
@@ -196,9 +196,9 @@ DedeAudioProcessor::createParameterLayout()
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         // The region's own band, degraded and panned but not delayed, into
-        // the mix, at 0 dB by default, as the delay is off by default: a new
-        // region is heard as the processed band itself. It adds to the global
-        // dry rather than replacing that range in it.
+        // the mix, at 0 dB by default: a new region is heard as the processed
+        // band itself, its repeats and reverb send under it. It adds to the
+        // global dry rather than replacing that range in it.
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgDry), 1 }, slot + "Dry Level",
             NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), 0.0f,
@@ -207,12 +207,12 @@ DedeAudioProcessor::createParameterLayout()
         // The region's repeats into the mix.
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgDly), 1 }, slot + "Delay Level",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), defaultDelayLevelDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgSend), 1 }, slot + "Reverb Send",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), defaultReverbSendDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         // ---- Dynamics around the two lines: a hard gate and a cut by default --
@@ -388,11 +388,30 @@ DedeAudioProcessor::DedeAudioProcessor()
                      BinaryData::namedResourceListSize,
                      BinaryData::getNamedResource
                    #endif
-                     )
+                     ),
+      regionPresetLibrary (regionPresetModule, 1,
+                           fxme::PresetManager::getModulePresetDirectory (regionPresetModule)
+                         #if DEDE_HAS_BINARY_DATA
+                           , BinaryData::namedResourceList,
+                           BinaryData::namedResourceListSize,
+                           BinaryData::getNamedResource
+                         #endif
+                           )
 {
     // User presets moved to FX-Mechanics/Dede/Presets: bring the ones saved
     // in the old folder (Dede/Presets) across, once.
     presetManager.importLegacyUserPresets (fxme::PresetManager::getDefaultUserPresetDirectory ("Dede"));
+
+    // A region preset is everything about a region but where it is (its
+    // frequency range) and whether it is in use or listened to alone.
+    const auto inRegionPreset = [] (const juce::String& key)
+    {
+        return key != ids::rgFLo && key != ids::rgFHi && key != ids::rgOn
+            && key != ids::rgActive && key != ids::rgSolo;
+    };
+    for (int i = 0; i < maxRegions; ++i)
+        regionPresets[(size_t) i] = std::make_unique<fxme::ModulePresetTarget> (
+            regionPresetLibrary, apvts, ids::region (i, ""), inRegionPreset);
 
     cacheParameterPointers();
     inputTap.setEnabled (true);

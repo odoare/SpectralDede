@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Tuned Resonator (MIDI)">
+  <Param key="mode" value="2"/>
+  <Param key="timel" value="1"/>
+  <Param key="timer" value="2"/>
+  <Param key="fbl" value="-1.5"/>
+  <Param key="fbr" value="-1.5"/>
+  <Param key="fbx" value="-60"/>
+  <Param key="dry" value="-60"/>
+  <Param key="dly" value="-6"/>
+  <Param key="send" value="-24"/>
+</FxmeModulePreset>

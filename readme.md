@@ -28,6 +28,9 @@ The spectrum view is the whole interface.
   under the spectrum, where they stay while you drag its lines: tabs for its
   dynamics, spectral effects, delay and degrade stages, and beside them its
   output (its own dry band, its repeats, the reverb send).
+- Each region has its own presets (everything about it but its frequency
+  range), in the bar over its output knobs; "..." opens the browser. They are
+  shared by every Dede instance.
 - Ctrl+drag a region to copy it, every setting with it, and place the copy.
   A moved region's borders stick to the other regions' borders, as a dragged
   border does, so a copy can be set right beside its original.

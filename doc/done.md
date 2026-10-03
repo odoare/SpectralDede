@@ -4,6 +4,31 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Region presets; new regions start as a slight echo (2026-10-03)
+
+- **Region presets**: the region dock's strip heading has a preset bar
+  (beside the region's number, in its colour) with a "..." browser. A region
+  preset is everything about a region but its frequency range, on, active
+  and solo. User presets go to `FX-Mechanics/Modules/SpectralRegion/Presets`
+  (shared by every Dede instance; a preset saved from one region is in
+  every region's list at once). Each region's current preset is saved with
+  the session and with global presets; editing a region marks its preset
+  modified ("*"), and a region preset load marks the global preset
+  modified. Built on FxmeTools' new module presets (phase 3 of its
+  `doc/local-presets-plan.md`).
+- **Seven factory region presets** (`Source/Assets/Regions`, embedded):
+  Slap Back, Dotted Echo, Frozen Wash (wash freeze, wide), Stutter Freeze
+  (tonal, retriggered at 1/8), Shimmer Climb (Transpose +12 in the loop),
+  Crushed Loop (bit-crush and downsample in the loop), Tuned Resonator
+  (MIDI: delay times of 1 and 2 periods of the last note, high feedback).
+- **New-region defaults**: a slight echo, synced, with a little reverb:
+  DAW sync, Time L 0.1875 (dotted 1/16) / Time R 0.375 (dotted 1/8),
+  feedback -14 dB, Delay -12 dB, reverb send -18 dB, Dry 0 dB (constants in
+  `ParamIDs.h`, to tune by ear). The Delay switch brings Delay back to -12
+  dB when it has nothing to remember. A new region shows no preset.
+- **Ctrl-drag copy** keeps the original's region preset name, and its
+  modified mark.
+
 ## User presets in the FX-Mechanics folder (2026-10-03)
 
 Dede's user presets now live in `<user data>/FX-Mechanics/Dede/Presets`

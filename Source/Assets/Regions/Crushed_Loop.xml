@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Crushed Loop">
+  <Param key="mode" value="1"/>
+  <Param key="timel" value="0.25"/>
+  <Param key="timer" value="0.25"/>
+  <Param key="fbl" value="-5"/>
+  <Param key="fbr" value="-5"/>
+  <Param key="fbx" value="-12"/>
+  <Param key="dry" value="0"/>
+  <Param key="dly" value="-6"/>
+  <Param key="send" value="-24"/>
+  <Param key="crshon" value="1"/>
+  <Param key="bits" value="6"/>
+  <Param key="crshpos" value="1"/>
+  <Param key="dson" value="1"/>
+  <Param key="dsf" value="4"/>
+  <Param key="dspos" value="1"/>
+</FxmeModulePreset>

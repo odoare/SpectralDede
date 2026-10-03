@@ -81,16 +81,21 @@ file(GLOB DEDE_INCLUDE_DIRS LIST_DIRECTORIES true
 list(FILTER DEDE_INCLUDE_DIRS EXCLUDE REGEX "\\.(c|cc|cpp|cxx|h|hpp|hxx|mm)$")
 target_include_directories(Dede PRIVATE ${DEDE_INCLUDE_DIRS})
 
-# Image assets (logo, artwork) and factory preset XML. The presets are
-# APVTS-state XML saved by the plugin; PresetManager keeps every embedded
+# Image assets (logo, artwork) and factory preset XML. The global presets
+# are APVTS-state XML saved by the plugin; PresetManager keeps every embedded
 # "*_xml" resource whose root tag matches the APVTS state type ("Parameters")
 # and ignores the rest, so images and presets can share one binary-data blob.
+# The region presets (Assets/Regions) are FxmeModulePreset files of module
+# "SpectralRegion", kept by the region preset library and ignored by the
+# global manager. Binary-data names come from file names only: keep them
+# distinct across the two folders.
 # DEDE_HAS_BINARY_DATA lets the processor fall back to a user-presets-only
 # manager while the Assets folder is still empty.
 file(GLOB DEDE_ASSETS CONFIGURE_DEPENDS
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.png
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.jpg
-                      ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.xml)
+                      ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.xml
+                      ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/Regions/*.xml)
 if(DEDE_ASSETS)
     juce_add_binary_data(DedeBinaryData SOURCES ${DEDE_ASSETS})
     set_target_properties(DedeBinaryData PROPERTIES
@@ -102,6 +107,13 @@ else()
 endif()
 
 juce_generate_juce_header(Dede)
+
+# FxmeTools' module preset tests (ModulePresetLibrary / ModulePresetTarget),
+# on request: -DDEDE_BUILD_PRESET_TESTS=ON, target FxmeToolsPresetTests.
+option(DEDE_BUILD_PRESET_TESTS "Build FxmeTools' module preset tests" OFF)
+if(DEDE_BUILD_PRESET_TESTS)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/tests/presets FxmeToolsPresetTests)
+endif()
 
 target_compile_definitions(Dede
     PUBLIC

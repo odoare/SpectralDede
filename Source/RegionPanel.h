@@ -29,6 +29,10 @@
         the delay loop (on what enters the lines: the first echo, then again
         on every repeat), or after the delay (on the repeats).
 
+    Over the strip, beside the region's number, the region's preset bar
+    (FxmeTools module presets, module "SpectralRegion": everything about a
+    region but its frequency range, on, active and solo), with its browser.
+
     The strip, always in view whatever the tab: the region's own band
     undelayed (Dry, 0 dB by default, added on top of the global dry), its
     repeats (Delay), and the send to the shared reverb (Reverb), taken after
@@ -66,7 +70,7 @@ public:
         editor's life (not saved): the tab last shown, and where each region's
         gate, ceiling and Delay level were when switched off, for switching
         them back on (a line never dragged comes back at -60 or -12 dB, the
-        Delay level at 0 dB). */
+        Delay level at its default, -12 dB). */
     struct Session
     {
         Session();
@@ -102,6 +106,13 @@ private:
     const juce::Colour accent;
     std::unique_ptr<Tabs> tabs;
     std::unique_ptr<Strip> strip;
+
+    /** The region's presets (everything but its range), in the strip's
+        heading, beside the region's number; "..." opens the browser. */
+    std::unique_ptr<fxme::PresetBarComponent> presetBar;
+
+    /** The strip's heading row: the region's number, then the preset bar. */
+    juce::Rectangle<int> headingArea() const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RegionPanel)
 };

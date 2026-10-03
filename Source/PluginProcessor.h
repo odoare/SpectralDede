@@ -26,6 +26,8 @@
 #include <JuceHeader.h>
 #include <FxmeTools/dsp/Reverb.h>   // not in the module umbrella: needs WDL
 #include "ParamIDs.h"
+#include <array>
+#include <memory>
 #include <optional>
 
 //==============================================================================
@@ -64,6 +66,11 @@ public:
     //==========================================================================
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept  { return apvts; }
     fxme::PresetManager& getPresetManager() noexcept         { return presetManager; }
+
+    /** Region presets: what region slot `slot` loads and saves (everything
+        but its frequency range, on, active and solo), as a PresetBank for
+        the preset bar and browser. Its current preset is kept in the state. */
+    fxme::ModulePresetTarget& getRegionPresets (int slot) noexcept { return *regionPresets[(size_t) slot]; }
 
     /** The post-input spectrum the editor draws its regions over. */
     fxme::SpectrumTap& getInputTap() noexcept                { return inputTap; }
@@ -226,6 +233,13 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
     fxme::PresetManager presetManager;
+
+    /** Region presets: one library for every slot (so a preset saved from
+        one region is in every region's list), one target per slot. The
+        targets are made in the constructor, once the parameters exist, and
+        go before the library and the APVTS (declared after them). */
+    fxme::ModulePresetLibrary regionPresetLibrary;
+    std::array<std::unique_ptr<fxme::ModulePresetTarget>, dede::maxRegions> regionPresets;
 
     RegionParams regions[dede::maxRegions];
     std::atomic<float>* pDryLevel = nullptr;

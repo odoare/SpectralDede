@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Shimmer Climb">
+  <Param key="mode" value="1"/>
+  <Param key="timel" value="0.25"/>
+  <Param key="timer" value="0.375"/>
+  <Param key="fbl" value="-7"/>
+  <Param key="fbr" value="-7"/>
+  <Param key="fbx" value="-60"/>
+  <Param key="dry" value="0"/>
+  <Param key="dly" value="-9"/>
+  <Param key="send" value="-12"/>
+  <Param key="trnon" value="1"/>
+  <Param key="trnst" value="12"/>
+  <Param key="trnpos" value="1"/>
+</FxmeModulePreset>
