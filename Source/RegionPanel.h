@@ -30,7 +30,7 @@
         on every repeat), or after the delay (on the repeats).
 
     The strip, always in view whatever the tab: the region's own band
-    undelayed (Dry, off by default, added on top of the global dry), its
+    undelayed (Dry, 0 dB by default, added on top of the global dry), its
     repeats (Delay), and the send to the shared reverb (Reverb), taken after
     those two levels. Its gain and pan are the line and the round handle on
     the view.

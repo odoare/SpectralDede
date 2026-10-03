@@ -196,17 +196,18 @@ DedeAudioProcessor::createParameterLayout()
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         // The region's own band, degraded and panned but not delayed, into
-        // the mix. Off by default: the band is already in the global dry, and
-        // this adds to it rather than replacing it.
+        // the mix, at 0 dB by default, as the delay is off by default: a new
+        // region is heard as the processed band itself. It adds to the global
+        // dry rather than replacing that range in it.
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgDry), 1 }, slot + "Dry Level",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), 0.0f,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         // The region's repeats into the mix.
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id (ids::rgDly), 1 }, slot + "Delay Level",
-            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), 0.0f,
+            NormalisableRange<float> (minFeedbackDb, maxFeedbackDb, 0.1f), minFeedbackDb,
             AudioParameterFloatAttributes().withStringFromValueFunction (dbToText)));
 
         layout.add (std::make_unique<AudioParameterFloat> (

@@ -4,6 +4,30 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## Preset browser button in the shared preset bar (2026-10-03)
+
+The top bar's "..." (the full preset browser in a callout) is now the
+FxmeTools preset bar's own optional button, not Dede's: the bar is 236 px
+wide with the button inside it, and `presetBrowserButton` /
+`showPresetBrowser()` are gone. Same browser, same size (320 x 380), same
+anchor. Phase 1 of FxmeTools' `doc/local-presets-plan.md` (region presets
+come in its phase 3).
+
+## New regions: Dry at 0 dB, no delay (2026-10-03)
+
+- **Defaults swapped**: a region's `dry` now defaults to 0 dB (was -inf) and
+  its `dly` to -inf (was 0 dB). A freshly drawn region is heard as its own
+  band, processed, with no repeats until Delay is turned up (or its Delay
+  switch is switched on, which brings it to 0 dB).
+- **A drawn region starts from every default**: the slot's parameters are
+  all put back to their defaults before its range is set (it used to keep
+  whatever the slot held: an earlier region's delay and effects, or a
+  preset's unused slot). A Ctrl-drag copy still takes the original's.
+- The region's Dry adds to the global Dry, which carries the whole input:
+  with both at 0 dB the band is heard twice (about +6 dB over its range).
+  Turn the global Dry down to hear only the regions.
+- No state version bump (unreleased). Presets keep their stored values.
+
 ## Copy-drag, magnetic moves, double-click reset (2026-10-02)
 
 - **Magnetic borders when moving a region**: the nearer of its two borders

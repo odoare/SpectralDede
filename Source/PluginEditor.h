@@ -56,6 +56,10 @@ private:
 
     void setParameter (const juce::String& id, float value);
 
+    /** Puts every parameter of region slot `slot` but its "on" back to its
+        default, for a region drawn anew. */
+    void resetSlotToDefaults (int slot);
+
     /** Copies every setting of region `source` (but its solo) into a free
         slot and puts it in use; returns that slot, or -1 when none is free.
         For the view's Ctrl-drag. */
@@ -75,11 +79,6 @@ private:
     /** Docks the settings of region `slot` under the spectrum, or the hint
         to select one with -1. Does nothing when that one is already shown. */
     void showRegion (int slot);
-
-    /** Opens the full preset browser in a callout under the top bar. The
-        compact strip there only walks the list; saving, renaming and deleting
-        live here. */
-    void showPresetBrowser();
 
     /** Opens the global controls (reverb, engine, gate) in a callout under
         the gear button. */
@@ -138,7 +137,6 @@ private:
     fxme::FxmeSlider outKnob      { processor.getAPVTS(), dede::ids::outLevel, "Output",  dede::theme::accent };
 
     fxme::PresetBarComponent presetBar { processor.getPresetManager() };
-    juce::TextButton presetBrowserButton { "..." };
     GearButton globalButton;
     fxme::InfoButton infoButton;
 

@@ -36,8 +36,9 @@ stereo delay in three time modes, and a send to a shared reverb.
 ```
 
 A region is a small channel strip. Its band, panned, leaves it two
-ways, each at its own level: as it is, undelayed (the region's **Dry**, off by
-default), and through its delay (**Delay**, 0 dB by default). The reverb send
+ways, each at its own level: as it is, undelayed (the region's **Dry**, 0 dB
+by default), and through its delay (**Delay**, -inf by default: a new region
+has no delay until it is turned up). The reverb send
 is taken from the sum of the two, after their levels, like a post-fader send:
 with Delay at -inf the reverb gets no repeats from that region, and with both
 down it gets nothing from it.
@@ -416,8 +417,8 @@ the sound as it was heard), `flo`, `fhi` (band borders, logarithmic 20 Hz to
 as the gate, at its maximum it is off), `gain` (dB), `pan`,
 `timel`, `timer` (0.001 to 3, meaning set by the mode), `mode` (seconds, DAW
 sync, MIDI note), `fbl`, `fbr`, `fbx` (dB, minimum reads as silence), `dry`
-(dB, the region's own band undelayed into the mix, default -inf), `dly` (dB,
-its repeats into the mix, default 0 dB) and `send` (dB, to the reverb, taken
+(dB, the region's own band undelayed into the mix, default 0 dB), `dly` (dB,
+its repeats into the mix, default -inf) and `send` (dB, to the reverb, taken
 from the region's output after `dry` and `dly`).
 
 Degrade, per region: `saton`, `satmod` (Standard, Dynamic, Triode, Class AB),

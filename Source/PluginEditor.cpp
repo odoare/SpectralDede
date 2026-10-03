@@ -102,16 +102,17 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     addAndMakeVisible (hairlineGlow);   // right after the bar: above it, below the rest
 
     presetBar.setAccentColour (theme::accent);
-    presetBrowserButton.setTooltip ("Browse, save and delete presets");
-    presetBrowserButton.setColour (juce::TextButton::textColourOffId, theme::accent);
-    presetBrowserButton.onClick = [this] { showPresetBrowser(); };
+    // The bar walks the list; its "..." opens the full browser (saving,
+    // renaming, deleting) in a callout under it.
+    presetBar.setBrowserButtonVisible (true);
+    presetBar.setBrowserSize (320, 380);
 
     globalButton.setTooltip ("Global controls: reverb, engine, bands and FFT size");
     globalButton.onClick = [this] { showGlobalPanel(); };
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Dede", helpBody);
-    topBar.setRightControls ({ { &presetBar, 210 }, { &presetBrowserButton, 26 },
+    topBar.setRightControls ({ { &presetBar, 236 },
                                { &globalButton, 24 }, { &infoButton, 22 } });
 
     fxme::SpectrumDisplay::Colours specColours;
@@ -324,14 +325,13 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         if (slot < 0)
             return -1;
 
-        // A new region starts wide open and centred: the band the user drew is
-        // the only thing they have expressed an opinion about.
+        // A new region starts from every default (gate and ceiling off, 0 dB,
+        // centred, its own band at 0 dB, no delay, every effect off): the band
+        // the user drew is the only thing they have expressed an opinion
+        // about. The slot may hold an earlier region's settings, or a preset's.
+        resetSlotToDefaults (slot);
         setParameter (ids::region (slot, ids::rgFLo),  lowHz);
         setParameter (ids::region (slot, ids::rgFHi),  highHz);
-        setParameter (ids::region (slot, ids::rgGate), gateFloorDb);
-        setParameter (ids::region (slot, ids::rgCeil), gateCeilDb);
-        setParameter (ids::region (slot, ids::rgGain), 0.0f);
-        setParameter (ids::region (slot, ids::rgPan),  0.0f);
         setParameter (ids::region (slot, ids::rgOn),   1.0f);
 
         refreshRegionsFromParameters (true);
@@ -379,6 +379,17 @@ void DedeAudioProcessorEditor::wireRegionEditor()
 
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
+}
+
+void DedeAudioProcessorEditor::resetSlotToDefaults (int slot)
+{
+    // "on" is left to the caller, to be set once the rest is in place.
+    const auto prefix = ids::region (slot, "");
+    for (auto* param : processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (param))
+            if (ranged->getParameterID().startsWith (prefix)
+                && ranged->getParameterID() != ids::region (slot, ids::rgOn))
+                ranged->setValueNotifyingHost (ranged->getDefaultValue());
 }
 
 int DedeAudioProcessorEditor::duplicateRegion (int source)
@@ -449,19 +460,6 @@ void DedeAudioProcessorEditor::showRegion (int slot)
     }
 
     repaint (dockArea);
-}
-
-void DedeAudioProcessorEditor::showPresetBrowser()
-{
-    auto browser = std::make_unique<fxme::PresetComponent> (processor.getPresetManager());
-    browser->setAccentColour (theme::accent);
-    browser->setSize (320, 380);
-
-    juce::CallOutBox::launchAsynchronously (std::move (browser),
-                                            getLocalArea (&topBar,
-                                                          presetBrowserButton.getBounds().toFloat())
-                                                .toNearestInt(),
-                                            this);
 }
 
 void DedeAudioProcessorEditor::showGlobalPanel()
