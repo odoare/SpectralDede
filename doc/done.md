@@ -4,6 +4,14 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## User presets in the FX-Mechanics folder (2026-10-03)
+
+Dede's user presets now live in `<user data>/FX-Mechanics/Dede/Presets`
+(`~/.config/FX-Mechanics/Dede/Presets` on Linux) instead of `Dede/Presets`.
+On its first start the plugin copies the presets of the old folder across
+(once: a `.imported-to-FX-Mechanics` marker is left there; nothing is moved
+or deleted). Phase 2 of FxmeTools' `doc/local-presets-plan.md`.
+
 ## Preset browser button in the shared preset bar (2026-10-03)
 
 The top bar's "..." (the full preset browser in a callout) is now the

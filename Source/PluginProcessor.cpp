@@ -382,7 +382,7 @@ DedeAudioProcessor::DedeAudioProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout()),
       presetManager (apvts,
-                     fxme::PresetManager::getDefaultUserPresetDirectory ("Dede")
+                     fxme::PresetManager::getVendorPresetDirectory ("Dede")
                    #if DEDE_HAS_BINARY_DATA
                      , BinaryData::namedResourceList,
                      BinaryData::namedResourceListSize,
@@ -390,6 +390,10 @@ DedeAudioProcessor::DedeAudioProcessor()
                    #endif
                      )
 {
+    // User presets moved to FX-Mechanics/Dede/Presets: bring the ones saved
+    // in the old folder (Dede/Presets) across, once.
+    presetManager.importLegacyUserPresets (fxme::PresetManager::getDefaultUserPresetDirectory ("Dede"));
+
     cacheParameterPointers();
     inputTap.setEnabled (true);
     splitter.setBandProcessor (&spectral);
