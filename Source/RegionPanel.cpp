@@ -11,6 +11,7 @@
 */
 
 #include "RegionPanel.h"
+#include "Tooltips.h"
 
 using namespace dede;
 
@@ -121,9 +122,7 @@ public:
     DelayPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour, Session& sessionToUse)
         : processor (p), slot (regionSlot), session (sessionToUse), delaySwitch ("Delay", accentColour)
     {
-        delaySwitch.setTooltip ("The region's repeats. Follows the Delay level (in the strip): "
-                                "off at -inf. Switching it off parks the level there, switching "
-                                "it on brings it back");
+        delaySwitch.setTooltip (tips::delay::delaySwitch);
         delaySwitch.isOn = [this] { return parameterValue (processor, slot, ids::rgDly) > minFeedbackDb; };
         delaySwitch.switchOff = [this]
         {
@@ -147,6 +146,12 @@ public:
         fbL        = knob (ids::rgFbL,   "Fb L");
         fbR        = knob (ids::rgFbR,   "Fb R");
         fbX        = knob (ids::rgFbX,   "Cross");
+        timeL->setTooltip (tips::delay::timeL);
+        timeR->setTooltip (tips::delay::timeR);
+        fbL->setTooltip (tips::delay::fbL);
+        fbR->setTooltip (tips::delay::fbR);
+        fbX->setTooltip (tips::delay::cross);
+        modeBox.setTooltip (tips::delay::mode);
 
         modeBox.addItem ("Seconds",   1);
         modeBox.addItem ("DAW sync",  2);
@@ -281,9 +286,7 @@ public:
         const auto gateDb = [this] { return parameterValue (processor, slot, ids::rgGate); };
         const auto ceilDb = [this] { return parameterValue (processor, slot, ids::rgCeil); };
 
-        gateSwitch.setTooltip ("Gate, the lower (dashed) line: under it, a downward expander "
-                               "(a hard gate by default). Off while its line is at the bottom; "
-                               "switching it off parks it there, switching it on brings it back");
+        gateSwitch.setTooltip (tips::dynamics::gateSwitch);
         gateSwitch.isOn = [gateDb] { return gateDb() > gateFloorDb; };
         gateSwitch.switchOff = [this, gateDb]
         {
@@ -298,9 +301,7 @@ public:
             setParameterValue (processor, slot, ids::rgGate, juce::jlimit (gateFloorDb + 1.0f, gateCeilDb - 1.0f, db));
         };
 
-        ceilingSwitch.setTooltip ("Ceiling, the upper (dotted) line: over it, a compressor, a "
-                                  "limiter or a cut (the default). Off while its line is at the top; "
-                                  "switching it off parks it there, switching it on brings it back");
+        ceilingSwitch.setTooltip (tips::dynamics::ceilingSwitch);
         ceilingSwitch.isOn = [ceilDb] { return ceilDb() < gateCeilDb; };
         ceilingSwitch.switchOff = [this, ceilDb]
         {
@@ -333,6 +334,17 @@ public:
         ceiling.push_back (knob (ids::rgCeilKnee,    "Knee"));
         ceiling.push_back (knob (ids::rgCeilAttack,  "Attack"));
         ceiling.push_back (knob (ids::rgCeilRelease, "Release"));
+
+        for (auto [k, tip] : { std::pair { gate[0].get(), tips::dynamics::gateRatio },
+                               std::pair { gate[1].get(), tips::dynamics::gateRange },
+                               std::pair { gate[2].get(), tips::dynamics::gateKnee },
+                               std::pair { gate[3].get(), tips::dynamics::gateAttack },
+                               std::pair { gate[4].get(), tips::dynamics::gateRelease },
+                               std::pair { ceiling[0].get(), tips::dynamics::ceilRatio },
+                               std::pair { ceiling[1].get(), tips::dynamics::ceilKnee },
+                               std::pair { ceiling[2].get(), tips::dynamics::ceilAttack },
+                               std::pair { ceiling[3].get(), tips::dynamics::ceilRelease } })
+            k->setTooltip (tip);
 
         updateIdle();
         startTimerHz (10);
@@ -420,9 +432,7 @@ public:
         : accent (accentColour),
           attachment (parameter, [this] (float v) { setSelected (juce::roundToInt (v)); })
     {
-        setTooltip ("Where this stage runs: before the delay (the region's Dry hears it "
-                    "too), in the delay loop (the first echo, then again on every "
-                    "repeat), or after the delay (on the repeats)");
+        setTooltip (tips::degrade::position);
         attachment.sendInitialUpdate();
     }
 
@@ -526,6 +536,7 @@ public:
         juce::String title;
         std::vector<Control> controls;
         const char* positionSuffix = nullptr;
+        const char* tooltip = nullptr;   // the stage's switch
     };
 
     StagesPage (DedeAudioProcessor& p, int regionSlot, juce::Colour accentColour,
@@ -540,6 +551,8 @@ public:
             stage->onSuffix = spec.onSuffix;
             stage->onSwitch = std::make_unique<fxme::FxmeButton> (
                 apvts, ids::region (slot, spec.onSuffix), spec.title, accentColour);
+            if (spec.tooltip != nullptr)
+                stage->onSwitch->button.setTooltip (spec.tooltip);
             addAndMakeVisible (*stage->onSwitch);
 
             for (const auto& c : spec.controls)
@@ -736,10 +749,9 @@ public:
             return k;
         };
 
-        dry    = knob (ids::rgDry,  "Dry",    "The region's own band, not delayed (panned, through the "
-                                              "stages placed before the delay), on top of the global dry");
-        delay  = knob (ids::rgDly,  "Delay",  "The region's repeats");
-        reverb = knob (ids::rgSend, "Reverb", "Send to the shared reverb, taken after Dry and Delay");
+        dry    = knob (ids::rgDry,  "Dry",    tips::strip::dry);
+        delay  = knob (ids::rgDly,  "Delay",  tips::strip::delay);
+        reverb = knob (ids::rgSend, "Reverb", tips::strip::reverb);
     }
 
     void resized() override
@@ -810,30 +822,31 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, Session
     // In signal order within a position: saturation, bit-crush, downsample,
     // transpose, freq shift. Each chooses its own position: before, in or after the delay.
     const std::vector<Stage> degrade {
-        { ids::rgSatOn,   "Saturation", { { ids::rgSatModel,  "Model", &saturationModelNames },
-                                          { ids::rgSatDrive,  "Drive" } }, ids::rgSatPos },
-        { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits" } },  ids::rgCrushPos },
-        { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor" } }, ids::rgDsPos },
-        { ids::rgTransposeOn, "Transpose",  { { ids::rgTransposeSt,   "Semitones" } }, ids::rgTransposePos },
-        { ids::rgFreqShiftOn, "Freq shift", { { ids::rgFreqShiftHz, "Hz" } }, ids::rgFreqShiftPos },
+        { ids::rgSatOn,   "Saturation", { { ids::rgSatModel,  "Model", &saturationModelNames, tips::degrade::model },
+                                          { ids::rgSatDrive,  "Drive", nullptr, tips::degrade::drive } },
+          ids::rgSatPos, tips::degrade::saturation },
+        { ids::rgCrushOn, "Bit-crush",  { { ids::rgCrushBits, "Bits", nullptr, tips::degrade::bits } },
+          ids::rgCrushPos, tips::degrade::crush },
+        { ids::rgDsOn,    "Downsample", { { ids::rgDsFactor,  "Factor", nullptr, tips::degrade::factor } },
+          ids::rgDsPos, tips::degrade::downsample },
+        { ids::rgTransposeOn, "Transpose",  { { ids::rgTransposeSt, "Semitones", nullptr, tips::degrade::semitones } },
+          ids::rgTransposePos, tips::degrade::transpose },
+        { ids::rgFreqShiftOn, "Freq shift", { { ids::rgFreqShiftHz, "Hz", nullptr, tips::degrade::hz } },
+          ids::rgFreqShiftPos, tips::degrade::freqShift },
     };
 
     // Inside the splitter's frame: freeze or blur, then pitch.
     const std::vector<Stage> spectralStages {
-        { ids::rgPitchOn,  "Pitch",  { { ids::rgPitchSt,    "Semitones" } } },
+        { ids::rgPitchOn,  "Pitch",  { { ids::rgPitchSt, "Semitones", nullptr, tips::spectral::semitones } },
+          nullptr, tips::spectral::pitch },
         { ids::rgFreezeOn, "Freeze", {
-            { ids::rgFreezeMode,  "Mode", &freezeModeNames,
-              "Tonal: held notes stay notes. Wash: a smooth, static texture" },
-            { ids::rgFreezeTrig,  "Trigger", &freezeTriggerNames,
-              "Manual: frozen while Freeze is on. Retrigger: captures again at every step "
-              "of the rate. On/off: frozen for one step, live for the next" },
-            { ids::rgFreezeRate,  "Rate", &freezeRateNames,
-              "Step of the Retrigger and On/off triggers, synced to the host tempo "
-              "(T: triplet, D: dotted)" },
-            { ids::rgFreezeWidth, "Width", nullptr,
-              "How far the frozen left and right channels drift apart in phase: "
-              "0 keeps the image, 100 % makes them independent. Stereo bands only" } } },
-        { ids::rgBlurOn,   "Blur",   { { ids::rgBlurMs,     "Time" } } },
+            { ids::rgFreezeMode,  "Mode",    &freezeModeNames,    tips::spectral::freezeMode },
+            { ids::rgFreezeTrig,  "Trigger", &freezeTriggerNames, tips::spectral::trigger },
+            { ids::rgFreezeRate,  "Rate",    &freezeRateNames,    tips::spectral::rate },
+            { ids::rgFreezeWidth, "Width",   nullptr,             tips::spectral::width } },
+          nullptr, tips::spectral::freeze },
+        { ids::rgBlurOn,   "Blur",   { { ids::rgBlurMs, "Time", nullptr, tips::spectral::blurTime } },
+          nullptr, tips::spectral::blur },
     };
 
     // The tabs in signal order: the dynamics act on the band as it is cut
@@ -845,8 +858,7 @@ RegionPanel::RegionPanel (DedeAudioProcessor& processor, int regionSlot, Session
     // dimmed and says so, its settings kept for when the engine comes back.
     auto* spectralPage = new StagesPage (processor, slot, accent, spectralStages);
     spectralPage->isUnavailable = [&processor] { return processor.isLiveEngine(); };
-    spectralPage->setTooltip ("Pitch, freeze and blur work on the FFT: they have no "
-                              "effect in the Live engine");
+    spectralPage->setTooltip (tips::spectral::page);
     tabs->addTab (processor.isLiveEngine() ? "Spectral (off in Live)" : "Spectral",
                   theme::panel, spectralPage, true);
 

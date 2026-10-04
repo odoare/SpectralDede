@@ -23,6 +23,8 @@
 #include "GlobalPanel.h"
 #include "OutputMeter.h"
 #include "RegionPanel.h"
+#include "AppSettings.h"
+#include "Tooltips.h"
 
 //==============================================================================
 class DedeAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -87,7 +89,7 @@ private:
     DedeAudioProcessor& processor;
     fxme::FxmeLookAndFeel laf;
 
-    fxme::TopBar topBar { "Dede", "spectral multi-delay and reverb",
+    fxme::TopBar topBar { dede::theme::displayName, "Spectral delay, degrade & more",
                           JucePlugin_VersionString, logoImage() };
 
     /** A soft glow around the top bar's accent hairline, spilling a little
@@ -109,6 +111,17 @@ private:
 
     /** The FX-Mechanics logo, from the binary data (empty without it). */
     static juce::Image logoImage();
+
+    /** An embedded image by its binary-data name ("splash_jpg"); invalid
+        when the assets are not built in. */
+    static juce::Image assetImage (const char* resourceName);
+
+    /** The about / splash screen: Dede's artwork over the window, with the
+        FX-Mechanics logo and a link to fx-mechanics.com under it. Shown for
+        3 s the first time the editor opens in a plugin instance, and until
+        clicked when the top bar's logo or Dede's icon is clicked. Over
+        every other child. */
+    fxme::SplashOverlay splash;
 
     fxme::SpectrumRegionEditor spectrum;
     fxme::SpectrumRegionEditor::Region shownRegions[dede::maxRegions];
@@ -142,7 +155,19 @@ private:
 
     // The column's one-letter buttons rely on their tooltips. Declared after
     // the other children; it keeps itself on top anyway.
-    juce::TooltipWindow tooltipWindow { this, 700 };
+    // The hover help, with an off switch (the "?" of the global controls,
+    // saved machine-wide in AppSettings). Asking per tip rather than
+    // destroying the window: one object, and the switch covers every
+    // component under the editor, callouts included.
+    struct ToggleableTooltipWindow : public juce::TooltipWindow
+    {
+        using juce::TooltipWindow::TooltipWindow;
+        juce::String getTipFor (juce::Component& c) override
+        {
+            return dede::getUiTooltips() ? juce::TooltipWindow::getTipFor (c) : juce::String();
+        }
+    };
+    ToggleableTooltipWindow tooltipWindow { this, 700 };
 
     // Exactly one per editor, declared after the child components.
     fxme::TextEntryFocusFixer textEntryFixer { *this };

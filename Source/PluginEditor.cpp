@@ -109,11 +109,11 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     presetBar.setBrowserButtonVisible (true);
     presetBar.setBrowserSize (320, 380);
 
-    globalButton.setTooltip ("Global controls: reverb, engine, bands and FFT size");
+    globalButton.setTooltip (tips::bar::global);
     globalButton.onClick = [this] { showGlobalPanel(); };
 
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
-    infoButton.setInfo ("Dede", helpBody);
+    infoButton.setInfo (theme::displayName, helpBody);
     topBar.setRightControls ({ { &presetBar, 236 },
                                { &globalButton, 24 }, { &infoButton, 22 } });
 
@@ -175,6 +175,11 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     setUpKnob (revLevelKnob, theme::specViolet);
     setUpKnob (outKnob,      theme::accent);
 
+    dryKnob.setTooltip (tips::bar::dry);
+    wetKnob.setTooltip (tips::bar::delays);
+    revLevelKnob.setTooltip (tips::bar::reverb);
+    outKnob.setTooltip (tips::bar::output);
+
     processor.getPresetManager().addChangeListener (this);
     startTimerHz (20);
 
@@ -182,6 +187,19 @@ DedeAudioProcessorEditor::DedeAudioProcessorEditor (DedeAudioProcessor& p)
     const int dockMinWidth = 3 * theme::margin + theme::regionColumnWidth + RegionPanel::minimumWidth();
     setResizeLimits (juce::jmax (theme::minEditorWidth, dockMinWidth), theme::minEditorHeight, 2400, 1600);
     setSize (theme::defaultWidth, theme::defaultHeight);
+
+    // Dede's icon in the top bar's free space; it and the company logo open
+    // the splash, which then waits for a click (time to follow the link).
+    topBar.setDecoration (assetImage ("icont_png"));
+    topBar.onLogoClicked = [this] { splash.show (-1); };
+
+    splash.setImage (assetImage ("splash_jpg"));
+    splash.setLink ("fx-mechanics.com", juce::URL ("https://fx-mechanics.com"), logoImage());
+    splash.setLinkColour (theme::accent);
+    addChildComponent (splash);
+    splash.setBounds (getLocalBounds());
+    if (processor.takeFirstSplash())
+        splash.show (3000);
 }
 
 DedeAudioProcessorEditor::~DedeAudioProcessorEditor()
@@ -521,6 +539,18 @@ void DedeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     repaint();
 }
 
+juce::Image DedeAudioProcessorEditor::assetImage (const char* resourceName)
+{
+   #if DEDE_HAS_BINARY_DATA
+    int size = 0;
+    if (const char* data = BinaryData::getNamedResource (resourceName, size))
+        return juce::ImageCache::getFromMemory (data, size);
+   #else
+    juce::ignoreUnused (resourceName);
+   #endif
+    return {};
+}
+
 juce::Image DedeAudioProcessorEditor::logoImage()
 {
    #if DEDE_HAS_BINARY_DATA
@@ -595,6 +625,8 @@ void DedeAudioProcessorEditor::resized()
     spectrum.setBounds (area);
     if (regionPanel != nullptr)
         regionPanel->setBounds (dockArea);
+
+    splash.setBounds (getLocalBounds());
 
     outputMeter.setBounds (left.removeFromBottom (OutputMeter::preferredHeight));
     left.removeFromBottom (theme::margin);

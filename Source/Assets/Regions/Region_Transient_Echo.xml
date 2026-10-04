@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Transient Echo">
+  <Param key="gate" value="-30"/>
+  <Param key="gtrat" value="21"/>
+  <Param key="gtatk" value="0.5"/>
+  <Param key="gtrel" value="30"/>
+  <Param key="mode" value="1"/>
+  <Param key="timel" value="0.25"/>
+  <Param key="timer" value="0.375"/>
+  <Param key="fbl" value="-10"/>
+  <Param key="fbr" value="-10"/>
+  <Param key="fbx" value="-60"/>
+  <Param key="dry" value="-60"/>
+  <Param key="dly" value="-4"/>
+  <Param key="send" value="-15"/>
+</FxmeModulePreset>

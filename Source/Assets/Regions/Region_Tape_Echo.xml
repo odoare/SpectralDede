@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<FxmeModulePreset module="SpectralRegion" version="1" name="Tape Echo">
+  <Param key="mode" value="1"/>
+  <Param key="timel" value="0.375"/>
+  <Param key="timer" value="0.375"/>
+  <Param key="fbl" value="-5"/>
+  <Param key="fbr" value="-5"/>
+  <Param key="fbx" value="-60"/>
+  <Param key="dry" value="-60"/>
+  <Param key="dly" value="-6"/>
+  <Param key="send" value="-18"/>
+  <Param key="saton" value="1"/>
+  <Param key="satmod" value="2"/>
+  <Param key="satdrv" value="12"/>
+  <Param key="satpos" value="1"/>
+  <Param key="dson" value="1"/>
+  <Param key="dsf" value="2"/>
+  <Param key="dspos" value="1"/>
+</FxmeModulePreset>

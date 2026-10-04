@@ -11,6 +11,7 @@
 */
 
 #include "OutputMeter.h"
+#include "Tooltips.h"
 
 using namespace dede;
 
@@ -38,7 +39,7 @@ namespace
 OutputMeter::OutputMeter (DedeAudioProcessor& p)
     : processor (p)
 {
-    setTooltip ("Output level: RMS bars, peak markers held for a second");
+    setTooltip (tips::bar::meter);
     startTimerHz (timerHz);
 }
 

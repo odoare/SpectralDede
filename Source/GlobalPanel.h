@@ -60,6 +60,7 @@ private:
                                         fftSizeAttachment;
 
     fxme::InfoButton infoButton;
+    fxme::AccentToggle tooltipsButton;   // "?": hover help on / off
 
     juce::StringArray readout;
     juce::Rectangle<int> titleArea, reverbHeading, engineHeading, engineLabel, bandsLabel,

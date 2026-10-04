@@ -29,6 +29,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <utility>
 
 //==============================================================================
 class DedeAudioProcessor : public juce::AudioProcessor,
@@ -66,6 +67,11 @@ public:
     //==========================================================================
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept  { return apvts; }
     fxme::PresetManager& getPresetManager() noexcept         { return presetManager; }
+
+    /** True the first time it is asked, false after: the editor shows its
+        timed splash once per plugin instance, not each time the window is
+        reopened. Not saved. Message thread. */
+    bool takeFirstSplash() noexcept                          { return ! std::exchange (splashShown, true); }
 
     /** Region presets: what region slot `slot` loads and saves (everything
         but its frequency range, on, active and solo), as a PresetBank for
@@ -233,6 +239,7 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
     fxme::PresetManager presetManager;
+    bool splashShown = false;
 
     /** Region presets: one library for every slot (so a preset saved from
         one region is in every region's list), one target per slot. The

@@ -46,6 +46,46 @@ wide with the button inside it, and `presetBrowserButton` /
 anchor. Phase 1 of FxmeTools' `doc/local-presets-plan.md` (region presets
 come in its phase 3).
 
+## Tooltips, with an on/off switch (2026-10-04)
+
+- **`Source/Tooltips.h`**: every hover-help string, one namespace per pane
+  (`dede::tips::bar`, `column`, `global`, `dynamics`, `spectral`, `delay`,
+  `degrade`, `strip`), as in SuperMoTo and ModalDish. The tips that were
+  written inline moved there; new ones on the level knobs, the reverb and
+  engine controls, every Dynamics, Delay, Spectral and Degrade knob, box and
+  stage switch.
+- **"?" in the global controls** (left of the "i"): turns the hover help on
+  and off. Saved machine-wide (`Source/AppSettings.h`,
+  `FX-Mechanics/Dede.settings`: `~/.config` on Linux, Application Support
+  on macOS, `%APPDATA%` on Windows), so it holds across instances and
+  sessions. The editor's tooltip window asks it before every tip, which
+  covers the dock and the callouts too.
+
+## Branding, window size, more factory presets (2026-10-04)
+
+- **Window**: opens at its minimum size, 1080 x 660 (was 1170 x 800).
+- **Name**: shown as "Dédé" (top bar, help); file-system names (preset
+  folders, the product) stay "Dede". `theme::displayName`.
+- **Icon** (`Assets/icont.png`) centred in the top bar's free space, between
+  the description and the preset bar (`fxme::TopBar::setDecoration`).
+- **Splash** (`Assets/splash.jpg`, `fxme::SplashOverlay`), with the
+  FX-Mechanics logo and a link to fx-mechanics.com under it: 3 s the first
+  time the editor opens in a plugin instance (a flag on the processor, not
+  saved), and, until clicked, when the top bar's logo or icon is clicked.
+  `Assets/icon.jpg` is not used but is embedded (the assets are globbed):
+  remove it if it is not wanted.
+- **Eight global factory presets**, generated from Init (only their regions
+  and a few global settings changed; the regions' own Dry at -inf since the
+  global Dry carries the band): Sub Keeper, Drum Splitter, Transient Echo,
+  Freeze Pad, Harmonic Resonators (MIDI), Tape Echo, Barber Pole, Stutter
+  Highs.
+- **Five region presets**: Haas Widener, Barber Pole, Octave Down Bloom,
+  Tape Echo, Transient Echo (files of the last three prefixed `Region_`:
+  binary-data names come from file names, and the global presets have the
+  same names).
+- All of them drafted from the parameters, not yet tuned by ear; the gate
+  level of the two Transient Echo presets (-30 dB) depends on the input.
+
 ## New regions: Dry at 0 dB, no delay (2026-10-03)
 
 - **Defaults swapped**: a region's `dry` now defaults to 0 dB (was -inf) and

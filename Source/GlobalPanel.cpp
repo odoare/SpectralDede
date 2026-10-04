@@ -11,6 +11,8 @@
 */
 
 #include "GlobalPanel.h"
+#include "AppSettings.h"
+#include "Tooltips.h"
 
 using namespace dede;
 
@@ -100,6 +102,13 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
 {
     for (auto* k : { &roomKnob, &dampKnob, &widthKnob })
         setUpKnob (*this, *k, theme::specViolet);
+    roomKnob.setTooltip (tips::global::room);
+    dampKnob.setTooltip (tips::global::damping);
+    widthKnob.setTooltip (tips::global::width);
+    engineBox.setTooltip (tips::global::engine);
+    bandsBox.setTooltip (tips::global::bands);
+    panLawBox.setTooltip (tips::global::panLaw);
+    fftSizeBox.setTooltip (tips::global::fftSize);
 
     engineBox.addItemList (engineNames, 1);
     theme::styleCombo (engineBox, theme::accent);
@@ -129,6 +138,15 @@ GlobalPanel::GlobalPanel (DedeAudioProcessor& p)
     infoButton.setColours ({ theme::accent, theme::text, theme::panel, theme::panelLine });
     infoButton.setInfo ("Global controls", infoBody);
     addAndMakeVisible (infoButton);
+
+    // The hover help switch, saved machine-wide (every instance, every
+    // session): the editor's tooltip window asks it before each tip.
+    tooltipsButton.setButtonText ("?");
+    tooltipsButton.setAccent (theme::accent, theme::dimText);
+    tooltipsButton.setTooltip (tips::global::tooltips);
+    tooltipsButton.setToggleState (getUiTooltips(), juce::dontSendNotification);
+    tooltipsButton.onClick = [this] { setUiTooltips (tooltipsButton.getToggleState()); };
+    addAndMakeVisible (tooltipsButton);
 
     readout = engineText();
     timerCallback();
@@ -218,6 +236,8 @@ void GlobalPanel::resized()
 
     titleArea = area.removeFromTop (titleHeight);
     infoButton.setBounds (titleArea.removeFromRight (titleHeight).reduced (1));
+    titleArea.removeFromRight (6);
+    tooltipsButton.setBounds (titleArea.removeFromRight (titleHeight).reduced (1));
     area.removeFromTop (sectionGap);
 
     const auto knobRow = [&area] (std::initializer_list<fxme::FxmeSlider*> knobs)

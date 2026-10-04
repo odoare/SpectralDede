@@ -11,6 +11,7 @@
 */
 
 #include "RegionColumn.h"
+#include "Tooltips.h"
 
 using namespace dede;
 
@@ -42,7 +43,7 @@ public:
           colour (theme::regionColour (regionSlot))
     {
         freeButton.setButtonText (juce::String::charToString (0x00d7));   // multiplication sign
-        freeButton.setTooltip ("Free: delete this region; its slot can be drawn again");
+        freeButton.setTooltip (tips::column::free);
         freeButton.setColour (juce::TextButton::buttonColourId, theme::panel.brighter (0.15f));
         freeButton.setColour (juce::TextButton::textColourOffId, theme::dimText);
         freeButton.setMouseClickGrabsKeyboardFocus (false);
@@ -53,13 +54,10 @@ public:
         };
         addChildComponent (freeButton);
 
-        setUpToggle (active, "On", ids::rgActive, colour,
-                     "On: the region is fed by its band. Off: the band stops "
-                     "feeding it and its tails ring out");
-        setUpToggle (solo, "S", ids::rgSolo, soloColour,
-                     "Solo: silence every region not soloed (the dry signal is kept)");
+        setUpToggle (active, "On", ids::rgActive, colour, tips::column::on);
+        setUpToggle (solo, "S", ids::rgSolo, soloColour, tips::column::solo);
 
-        setTooltip ("Region " + juce::String (slot + 1) + ": click to select it");
+        setTooltip (juce::String::formatted (tips::column::rowFmt, slot + 1));
     }
 
     /** Pulls parameter state and meter levels; repaints when anything shown
