@@ -16,7 +16,9 @@
       - A stereo meter: the region's output level, shown even when another
         region's solo silences it.
 
-    A free slot shows only its number. Clicking a row selects its region on
+    A free slot shows its number and a New (+) button, which creates a region
+    in that slot (useful when regions already cover the whole spectrum, so
+    there is no empty space left to draw on). Clicking a row selects its region on
     the spectrum view, and the selected region's row is highlighted.
 
     Author: Olivier Doaré, github.com/odoare
@@ -47,6 +49,9 @@ public:
 
     /** A row's Free button was clicked: delete that region. */
     std::function<void (int slot)> onFreeClicked;
+
+    /** A free row's New button was clicked: create a region in that slot. */
+    std::function<void (int slot)> onCreateClicked;
 
     /** Highlights the row of the region selected on the spectrum view, or
         none with -1. */

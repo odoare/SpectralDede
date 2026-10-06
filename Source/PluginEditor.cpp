@@ -22,7 +22,8 @@ namespace
         "Dede splits the incoming signal into frequency regions and gives each "
         "one its own stereo delay, plus a send to a shared reverb.\n\n"
         "Drawing regions:\n"
-        "  drag on empty space to draw a new one\n"
+        "  drag on empty space to draw a new one; shift+drag draws one anywhere,\n"
+        "    over other regions too, or click + on a free row of the column\n"
         "  drag a border to move it, drag inside to move the whole band; a border\n"
         "    sticks to another region's for a few pixels, so the two meet exactly\n"
         "  drag the dashed line to set the gate: what rises above it passes\n"
@@ -339,22 +340,11 @@ void DedeAudioProcessorEditor::wireRegionEditor()
         shownRegions[slot] = r;
     };
 
-    spectrum.onRegionCreate = [this] (float lowHz, float highHz) -> int
+    spectrum.onRegionCreate = [this] (float lowHz, float highHz)
     {
         const int slot = findFreeSlot();
-        if (slot < 0)
-            return -1;
-
-        // A new region starts from every default (gate and ceiling off, 0 dB,
-        // centred, its own band at 0 dB, no delay, every effect off): the band
-        // the user drew is the only thing they have expressed an opinion
-        // about. The slot may hold an earlier region's settings, or a preset's.
-        resetSlotToDefaults (slot);
-        setParameter (ids::region (slot, ids::rgFLo),  lowHz);
-        setParameter (ids::region (slot, ids::rgFHi),  highHz);
-        setParameter (ids::region (slot, ids::rgOn),   1.0f);
-
-        refreshRegionsFromParameters (true);
+        if (slot >= 0)
+            createRegion (slot, lowHz, highHz);
         return slot;
     };
 
@@ -397,8 +387,35 @@ void DedeAudioProcessorEditor::wireRegionEditor()
     };
     column.onFreeClicked = [this] (int slot) { freeSlot (slot); };
 
+    // The column's + on a free row: an octave in the middle of the view (on
+    // the log axis), selected at once so its borders can be dragged even
+    // where it lands inside another region.
+    column.onCreateClicked = [this] (int slot)
+    {
+        const float lo = spectrum.getViewLowHz(), hi = spectrum.getViewHighHz();
+        const float centre = std::sqrt (lo * hi);
+        const float half = juce::jmin (std::sqrt (2.0f), std::sqrt (hi / lo));
+        createRegion (slot, juce::jmax (lo, centre / half), juce::jmin (hi, centre * half));
+        spectrum.setSelectedRegion (slot);
+        spectrum.grabKeyboardFocus();
+    };
+
     spectrum.onDragStart = [this] (int slot, Handle handle) { beginGesture (slot, handle, true); };
     spectrum.onDragEnd   = [this] (int slot, Handle handle) { beginGesture (slot, handle, false); };
+}
+
+void DedeAudioProcessorEditor::createRegion (int slot, float lowHz, float highHz)
+{
+    // A new region starts from every default (gate and ceiling off, 0 dB,
+    // centred, its own band at 0 dB, no delay, every effect off): the band
+    // the user drew is the only thing they have expressed an opinion about.
+    // The slot may hold an earlier region's settings, or a preset's.
+    resetSlotToDefaults (slot);
+    setParameter (ids::region (slot, ids::rgFLo), lowHz);
+    setParameter (ids::region (slot, ids::rgFHi), highHz);
+    setParameter (ids::region (slot, ids::rgOn),  1.0f);
+
+    refreshRegionsFromParameters (true);
 }
 
 void DedeAudioProcessorEditor::resetSlotToDefaults (int slot)
@@ -576,7 +593,7 @@ void DedeAudioProcessorEditor::paint (juce::Graphics& g)
         g.setColour (theme::dimText);
         g.setFont (juce::Font (juce::FontOptions (13.0f)));
         g.drawText ("Select a region (on the spectrum or in the column) to edit it here, "
-                    "or drag on empty space to draw one",
+                    "or drag on empty space (shift+drag anywhere) to draw one",
                     dockArea.reduced (16), juce::Justification::centred);
     }
 }

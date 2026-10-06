@@ -41,6 +41,8 @@ namespace bar
 namespace column
 {
     inline constexpr auto free   = "Free: delete this region; its slot can be drawn again.";
+    inline constexpr auto create = "New: create a region in this slot, an octave wide in the middle "
+                                   "of the view (or shift+drag on the spectrum to draw one anywhere).";
     inline constexpr auto on     = "On: the region is fed by its band. Off: the band stops feeding it "
                                    "and its tails ring out.";
     inline constexpr auto solo   = "Solo: silence every region not soloed (the dry signal is kept).";

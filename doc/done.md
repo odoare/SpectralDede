@@ -4,6 +4,16 @@ Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
 
+## New regions over a fully covered spectrum (2026-10-06)
+
+- **Column + button**: a free row of the region column shows a "+" where a
+  row in use shows its "×". It creates a region in that slot, an octave
+  wide in the middle of the visible frequency range, every setting at its
+  default, and selects it.
+- **Shift-drag** on the spectrum draws a new region wherever it starts,
+  over existing regions too (FxmeTools' `SpectrumRegionEditor`).
+- Both share the editor's new `createRegion()` with the plain drag.
+
 ## Region presets; new regions start as a slight echo (2026-10-03)
 
 - **Region presets**: the region dock's strip heading has a preset bar

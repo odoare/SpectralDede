@@ -54,6 +54,19 @@ public:
         };
         addChildComponent (freeButton);
 
+        // Where Free sits on a row in use, New sits on a free one.
+        createButton.setButtonText ("+");
+        createButton.setTooltip (tips::column::create);
+        createButton.setColour (juce::TextButton::buttonColourId, theme::panel.brighter (0.15f));
+        createButton.setColour (juce::TextButton::textColourOffId, theme::dimText);
+        createButton.setMouseClickGrabsKeyboardFocus (false);
+        createButton.onClick = [this]
+        {
+            if (owner.onCreateClicked != nullptr)
+                owner.onCreateClicked (slot);
+        };
+        addAndMakeVisible (createButton);    // a row starts free (inUse false)
+
         setUpToggle (active, "On", ids::rgActive, colour, tips::column::on);
         setUpToggle (solo, "S", ids::rgSolo, soloColour, tips::column::solo);
 
@@ -70,6 +83,7 @@ public:
             inUse = used;
             for (auto* c : std::initializer_list<juce::Component*> { &freeButton, &active, &solo })
                 c->setVisible (inUse);
+            createButton.setVisible (! inUse);
             if (! inUse)
                 gateShown = levelShown[0] = levelShown[1] = 0.0f;
             repaint();
@@ -130,7 +144,8 @@ public:
         g.setColour (selected && inUse ? colour.withAlpha (0.8f) : theme::panelLine);
         g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
 
-        // The slot's number on a chip of its colour: all a free slot shows.
+        // The slot's number on a chip of its colour: with New, all a free
+        // slot shows.
         const auto chip = chipArea().toFloat();
         const float chipAlpha = ! inUse ? 0.25f : dimmed ? 0.45f : 1.0f;
         g.setColour (colour.withAlpha (chipAlpha));
@@ -170,6 +185,7 @@ public:
         auto line = area.withSizeKeepingCentre (area.getWidth(), buttonHeight);
 
         freeButton.setBounds (line.removeFromLeft (18));
+        createButton.setBounds (freeButton.getBounds());
         line.removeFromLeft (4);
 
         // On is two letters, S one.
@@ -215,7 +231,7 @@ private:
     const int slot;
     const juce::Colour colour;
 
-    juce::TextButton freeButton;
+    juce::TextButton freeButton, createButton;
     fxme::AccentToggle active, solo;
 
     // After the buttons, so the attachments go first when the row is destroyed.

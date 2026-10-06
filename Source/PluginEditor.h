@@ -58,6 +58,11 @@ private:
 
     void setParameter (const juce::String& id, float value);
 
+    /** Puts region slot `slot` in use as a new region over [lowHz, highHz],
+        every other setting at its default (from the view's drawing or the
+        column's + button). */
+    void createRegion (int slot, float lowHz, float highHz);
+
     /** Puts every parameter of region slot `slot` but its "on" back to its
         default, for a region drawn anew. */
     void resetSlotToDefaults (int slot);

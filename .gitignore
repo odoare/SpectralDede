@@ -5,3 +5,4 @@ cmake-build-*/
 compile_commands.json
 *.user
 .DS_Store
+Dede.code-workspace
