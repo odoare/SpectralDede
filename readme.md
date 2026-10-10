@@ -45,7 +45,7 @@ Each region processes its band in this order:
 ```
         ┌──────────────────────── global Dry (untouched input) ──────────────────────┐
         │                                                                            │
- in ──> band ──> dynamics ──> spectral ──> degrade ──> pan ──┬──> region Dry ─────────┼──> out
+ in ──> band ──> dynamics ──> spectral ──> degrade ──> pan ─┬──> region Dry ─────────┼──> out
                (gate/ceiling) (pitch,     (before)          │                        │
                               freeze,                       └──> delay ──> degrade ──┤
                               blur)                     degrade (in loop) ↺  (after) │
@@ -288,6 +288,23 @@ xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/VST3/SpectralDede.vst3"
 
 ## Licence
 
-GNU LGPL v3.0 or later.
+Spectral Dédé follows the licence of the FxmeTools JUCE module it is built
+on, which mirrors JUCE 8's own dual licence:
+
+    SPDX-License-Identifier: AGPL-3.0-or-later OR LicenseRef-FXME-Commercial
+
+- **AGPLv3 or later** (full text in [LICENSE](LICENSE)): use, modify and
+  redistribute it, provided what you distribute is also released under the
+  AGPLv3 with its complete source. This pairs with using JUCE under its
+  AGPLv3 option.
+- **Commercial terms** from the author, for those who hold a commercial JUCE
+  licence and do not want to release under the AGPL. Contact via
+  [github.com/odoare](https://github.com/odoare) or www.fx-mechanics.com. A
+  commercial grant covers this code only; JUCE has to be licensed separately
+  from Raw Material Software.
+
+The submodules keep their own terms: FxmeTools' `core/` is LGPL-3.0-or-later,
+its JUCE module is under the same dual licence as this plugin, and WDL
+(Cockos) is under the zlib licence. See `lib/FxmeTools/LICENSE.md`.
 
 ![Spectral Dédé](Source/Assets/splash.jpg)
