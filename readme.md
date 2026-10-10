@@ -6,13 +6,12 @@ standalone, for Linux, Windows and macOS.
 ![Spectral Dédé](doc/screenshot.png)
 
 Spectral Dédé (Dede for short) shows you the spectrum of the incoming signal
-and lets you draw rectangles on it. Each rectangle is a **region**: a frequency
+and lets you draw rectangles on it. Each rectangle is a a frequency
 band, cut out of the input and sent through its own small channel strip:
 dynamics, spectral effects, a stereo delay, a degrade chain, and a send to a
 shared reverb. Up to eight regions run at once, each with its own settings.
 
-What sets it apart from a multiband delay is how the bands are cut. A region
-is not a band-pass filter but a set of FFT bins, and its height on the view
+A region is a set of FFT bins, and its height on the view
 means something: the bottom edge is a gate, the top edge a ceiling. A region
 drawn high over a band keeps only the peaks that rise into it (the notes of a
 melody, say), and one drawn low keeps only what lies under them (the noise,
@@ -103,7 +102,9 @@ self-oscillates. Delays go up to 6 seconds.
 ### Two engines: Spectral and Live
 
 Set in the global controls. Spectral is the default and the reason for the
-plugin; Live is there for when latency matters more.
+plugin; Live is there for when latency matters more, or if you want it to
+wotk more like a classical multiband effect. In this mode, you can indeed
+use it like a multiband compressor if needed.
 
 | | Spectral | Live |
 |---|---|---|
