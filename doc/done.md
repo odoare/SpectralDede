@@ -1,8 +1,19 @@
-# Dede: done
+# Spectral Dédé: done
 
 Items from `doc/todo.md` that have been implemented, moved here with their
 original numbers so references between the two files stay valid. Newest first.
 Work that was never a todo item has no number.
+
+## Renamed Spectral Dédé (2026-10-07)
+
+The product is now Spectral Dédé (`SpectralDede` on disk: the CMake target,
+the binaries, the bundle ID `com.FXMechanics.SpectralDede`, the release
+artefacts). User presets go to `FX-Mechanics/SpectralDede/Presets` and the
+settings file is `FX-Mechanics/SpectralDede.settings`; nothing is carried over
+from the old `Dede` folders (unreleased, so no migration), and the import of
+the older `Dede/Presets` folder is gone. The code keeps the short name:
+`dede::`, `DedeAudioProcessor`, `DEDE_*`, and the plugin code `DEDE`, so hosts
+identify it as the same plugin under its new name. Entries below keep the old name.
 
 ## New regions over a fully covered spectrum (2026-10-06)
 

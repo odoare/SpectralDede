@@ -16,14 +16,14 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Target architectures")
 endif()
 
-project(Dede VERSION 0.1.0 LANGUAGES C CXX)
+project(SpectralDede VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # JUCE is expected as a sibling of this repo; FxmeTools lives in-tree as a git
 # submodule under lib/. The module is registered directly rather than through
-# fxmetools_attach: Dede compiles none of the WDL sources. The band splitter
+# fxmetools_attach: SpectralDede compiles none of the WDL sources. The band splitter
 # runs on fxme::RealFft (so its levels match fxme::SpectrumAnalyzer exactly —
 # both use the same transform, whose scaling matches what JUCE's dsp::FFT did
 # before the core split), and the reverb engine it does take from WDL
@@ -44,14 +44,14 @@ juce_add_module(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/FxmeTools)
 # travel with it.
 target_link_libraries(FxmeTools INTERFACE FxmeCore)
 
-juce_add_plugin(Dede
+juce_add_plugin(SpectralDede
     COMPANY_NAME                "FX-Mechanics"
     COMPANY_WEBSITE             "www.fx-mechanics.com"
     PLUGIN_MANUFACTURER_CODE    FXME
     PLUGIN_CODE                 DEDE
     FORMATS                     AU VST3 Standalone
     COPY_PLUGIN_AFTER_BUILD     TRUE
-    PRODUCT_NAME                "Dede"
+    PRODUCT_NAME                "SpectralDede"
     DESCRIPTION                 "FX-Mechanics spectral multi-delay and reverb"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            TRUE
@@ -60,7 +60,7 @@ juce_add_plugin(Dede
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     VST3_CATEGORIES             Fx Delay Reverb
     AU_MAIN_TYPE                kAudioUnitType_Effect
-    BUNDLE_ID                   "com.FXMechanics.Dede"
+    BUNDLE_ID                   "com.FXMechanics.SpectralDede"
 )
 
 # Source files are discovered recursively so adding a new component does not
@@ -70,7 +70,7 @@ file(GLOB_RECURSE DEDE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/*.h
 )
 
-target_sources(Dede PRIVATE ${DEDE_SOURCES})
+target_sources(SpectralDede PRIVATE ${DEDE_SOURCES})
 
 # Make every subdirectory under Source/ an include root so headers can be
 # included by name regardless of where a component lives.
@@ -79,7 +79,7 @@ file(GLOB DEDE_INCLUDE_DIRS LIST_DIRECTORIES true
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/*
 )
 list(FILTER DEDE_INCLUDE_DIRS EXCLUDE REGEX "\\.(c|cc|cpp|cxx|h|hpp|hxx|mm)$")
-target_include_directories(Dede PRIVATE ${DEDE_INCLUDE_DIRS})
+target_include_directories(SpectralDede PRIVATE ${DEDE_INCLUDE_DIRS})
 
 # Image assets (logo, artwork) and factory preset XML. The global presets
 # are APVTS-state XML saved by the plugin; PresetManager keeps every embedded
@@ -97,16 +97,16 @@ file(GLOB DEDE_ASSETS CONFIGURE_DEPENDS
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/*.xml
                       ${CMAKE_CURRENT_SOURCE_DIR}/Source/Assets/Regions/*.xml)
 if(DEDE_ASSETS)
-    juce_add_binary_data(DedeBinaryData SOURCES ${DEDE_ASSETS})
-    set_target_properties(DedeBinaryData PROPERTIES
+    juce_add_binary_data(SpectralDedeBinaryData SOURCES ${DEDE_ASSETS})
+    set_target_properties(SpectralDedeBinaryData PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION OFF)
-    target_link_libraries(Dede PRIVATE DedeBinaryData)
-    target_compile_definitions(Dede PRIVATE DEDE_HAS_BINARY_DATA=1)
+    target_link_libraries(SpectralDede PRIVATE SpectralDedeBinaryData)
+    target_compile_definitions(SpectralDede PRIVATE DEDE_HAS_BINARY_DATA=1)
 else()
-    target_compile_definitions(Dede PRIVATE DEDE_HAS_BINARY_DATA=0)
+    target_compile_definitions(SpectralDede PRIVATE DEDE_HAS_BINARY_DATA=0)
 endif()
 
-juce_generate_juce_header(Dede)
+juce_generate_juce_header(SpectralDede)
 
 # FxmeTools' module preset tests (ModulePresetLibrary / ModulePresetTarget),
 # on request: -DDEDE_BUILD_PRESET_TESTS=ON, target FxmeToolsPresetTests.
@@ -115,7 +115,7 @@ if(DEDE_BUILD_PRESET_TESTS)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/FxmeTools/tests/presets FxmeToolsPresetTests)
 endif()
 
-target_compile_definitions(Dede
+target_compile_definitions(SpectralDede
     PUBLIC
         JUCE_STRICT_REFCOUNTEDPOINTER=1
         JUCE_VST3_CAN_REPLACE_VST2=0
@@ -125,7 +125,7 @@ target_compile_definitions(Dede
         JUCE_MODAL_LOOPS_PERMITTED=1
 )
 
-target_link_libraries(Dede
+target_link_libraries(SpectralDede
     PRIVATE
         FxmeTools
         FxmeCore

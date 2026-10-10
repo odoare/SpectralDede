@@ -4,7 +4,7 @@
 
     Small machine-wide settings shared by every Dede instance (and the
     standalone app), persisted in a JUCE PropertiesFile under the user's
-    application-data folder (FX-Mechanics/Dede.settings: ~/.config on Linux,
+    application-data folder (FX-Mechanics/SpectralDede.settings: ~/.config on Linux,
     ~/Library/Application Support on macOS, %APPDATA% on Windows). Currently
     just whether the hover help is shown.
 
@@ -32,7 +32,7 @@ inline juce::ApplicationProperties& appProperties()
     static const bool inited = []
     {
         juce::PropertiesFile::Options o;
-        o.applicationName     = "Dede";
+        o.applicationName     = "SpectralDede";
         o.filenameSuffix      = "settings";
        #if JUCE_LINUX || JUCE_BSD
         o.folderName          = ".config/FX-Mechanics";   // JUCE puts it under ~ itself on Linux

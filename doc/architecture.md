@@ -1,7 +1,7 @@
-# Dede architecture
+# Spectral Dédé architecture
 
-Dede is an FX-Mechanics JUCE audio effect: a spectral multi-delay with a shared
-reverb. The user draws rectangular regions on a spectrum view; each region is a
+Spectral Dédé (Dede for short) is an FX-Mechanics JUCE audio effect: a
+spectral multi-delay with a shared reverb. The user draws rectangular regions on a spectrum view; each region is a
 frequency band with its own spectral gate, gain and pan, feeding its own stereo
 delay and a send to one common reverb.
 
@@ -494,7 +494,7 @@ to be recursive:
 ```sh
 git submodule update --init --recursive
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j2 --target Dede_VST3
+cmake --build build -j2 --target SpectralDede_VST3
 ```
 
 None of the WDL sources are compiled: the band splitter runs on

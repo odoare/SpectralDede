@@ -1,4 +1,4 @@
-# Dede: to do
+# Spectral Dédé: to do
 
 Improvements that are known and scoped but not required. Dede works without
 any of them. Each item is marked with its priority and where the code lives.

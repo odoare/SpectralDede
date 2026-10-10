@@ -119,7 +119,8 @@ namespace dede::theme
 
     /** The name shown to the user (title bar, help), with its accents. Built
         from UTF-8 explicitly: JUCE asserts on non-ASCII in a plain literal.
-        File-system names (preset folders, the product name) stay "Dede". */
-    inline const juce::String displayName { juce::CharPointer_UTF8 ("D\xc3\xa9" "d\xc3\xa9") };
+        File-system names (preset folders, the product name) are the ASCII
+        "SpectralDede". */
+    inline const juce::String displayName { juce::CharPointer_UTF8 ("Spectral D\xc3\xa9" "d\xc3\xa9") };
 
 } // namespace dede::theme
