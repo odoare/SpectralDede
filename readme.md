@@ -1,56 +1,250 @@
 # Spectral Dédé
 
-A spectral multi-delay and reverb, by FX-Mechanics.
+A spectral multi-delay, degrader and reverb, by FX-Mechanics. VST3, AU and
+standalone, for Linux, Windows and macOS.
 
-Spectral Dédé (Dede for short) shows you the incoming spectrum and lets you
-draw rectangular regions on it. Each region is a frequency band with its own
-spectral gate, gain and pan, feeding its own stereo delay (independent left and
-right times, left, right and cross feedback) and a send to a shared reverb. Delay times can be set in
-seconds, synced to the host tempo, or tuned to the period of the last MIDI note
-received.
+![Spectral Dédé](doc/screenshot.png)
 
-Because the split is spectral rather than a bank of filters, a region can be
-made to pass only the peaks of its band, or only its noise floor, which is what
-the gate is for. See [doc/architecture.md](doc/architecture.md) for the design.
+Spectral Dédé (Dede for short) shows you the spectrum of the incoming signal
+and lets you draw rectangles on it. Each rectangle is a **region**: a frequency
+band, cut out of the input and sent through its own small channel strip:
+dynamics, spectral effects, a stereo delay, a degrade chain, and a send to a
+shared reverb. Up to eight regions run at once, each with its own settings.
+
+What sets it apart from a multiband delay is how the bands are cut. A region
+is not a band-pass filter but a set of FFT bins, and its height on the view
+means something: the bottom edge is a gate, the top edge a ceiling. A region
+drawn high over a band keeps only the peaks that rise into it (the notes of a
+melody, say), and one drawn low keeps only what lies under them (the noise,
+the room, the breath). So two regions over the same frequencies can send a
+sound's tonal part to a long ping-pong delay and its noise floor to the
+reverb, each processed on its own.
+
+## Key concepts
+
+### Regions
+
+A region has two frequency borders (its left and right edges) and three
+horizontal lines:
+
+| Line | Look | What it does |
+|---|---|---|
+| Gate | dashed, lower | Below it, a bin is turned down: a hard gate by default, or a gentler expander. At the bottom of the view, the gate is off. |
+| Ceiling | dotted, upper | Above it, a bin is cut by default, or compressed or limited. At the top of the view, the ceiling is off. |
+| Gain | solid, with a round handle | Its height is the region's gain; the handle, dragged sideways, is its pan. |
+
+The gate and ceiling are compared with each bin's level, and the spectrum
+trace is measured the same way the gates measure (same window, same scale,
+peak detection, no averaging). Where the trace crosses a gate line on screen,
+those bins pass. What you see is what passes.
+
+### The region strip
+
+Each region processes its band in this order:
+
+```
+        ┌──────────────────────── global Dry (untouched input) ──────────────────────┐
+        │                                                                            │
+ in ──> band ──> dynamics ──> spectral ──> degrade ──> pan ──┬──> region Dry ─────────┼──> out
+               (gate/ceiling) (pitch,     (before)          │                        │
+                              freeze,                       └──> delay ──> degrade ──┤
+                              blur)                     degrade (in loop) ↺  (after) │
+                                                                                     │
+                       region Dry + Delay ──> reverb send ──> shared reverb ─────────┘
+```
+
+- **Dynamics**: what the gate and ceiling lines do. Under the gate, a
+  downward expander (ratio, range, knee, attack, release); over the ceiling,
+  a compressor, a limiter or a cut. In the Spectral engine this works on each
+  bin separately, a spectral expander/compressor; in the Live engine, on the
+  whole band.
+- **Spectral**: pitch shift (in semitones), freeze and blur, done inside the
+  FFT frame, with no extra latency.
+- **Degrade**: saturation, bit-crush, downsample, transpose and frequency
+  shift. Each stage has its own position (see below).
+- **Pan**, then two outputs at their own levels: the region's **Dry** (its
+  band, undelayed) and its **Delay** (its repeats).
+- **Reverb send**, taken after the Dry and Delay levels, like a post-fader
+  send.
+
+The global **Dry** is the untouched input, all frequencies, never processed.
+Regions add on top of it; they do not replace their band in it. To hear only
+what the regions do, turn the global Dry down.
+
+### Degrade positions
+
+Every degrade stage can run in one of three places:
+
+- **Before** the delay: on the band itself. The region's Dry hears it too.
+- **In loop**: inside the delay's feedback loop. The first echo goes through
+  the stage once, the second twice, and so on. A saturator drives each repeat
+  harder, Transpose +12 climbs an octave per repeat (the shimmer effect), and
+  Freq shift makes the repeats spiral up or down (a barber-pole effect).
+- **After** the delay: on the repeats only.
+
+### Delay-time modes
+
+Each region's left and right times are read one of three ways:
+
+- **Seconds**.
+- **DAW sync**: a fraction of a whole note at the host tempo (0.25 is a
+  quarter note, 0.1875 a dotted sixteenth).
+- **MIDI note**: a multiple of the period of the last MIDI note received. A
+  short delay with high feedback becomes a resonator tuned to whatever is
+  played. This is why the plugin takes MIDI input although it is an audio
+  effect: route a MIDI track to it in your DAW.
+
+Feedback is set per side, plus a cross feedback (left into right and back,
+for ping-pong). At its minimum, feedback is silence, so a delay with no
+feedback gives exactly one repeat. The delay scales its feedback down by
+itself whenever the settings would make it run away, so it never
+self-oscillates. Delays go up to 6 seconds.
+
+### Two engines: Spectral and Live
+
+Set in the global controls. Spectral is the default and the reason for the
+plugin; Live is there for when latency matters more.
+
+| | Spectral | Live |
+|---|---|---|
+| How bands are cut | FFT bins, near brick-wall edges | filters, 24 dB per octave |
+| Gate and ceiling | per bin: keep only the peaks, or only the floor | per band: the whole band opens or closes |
+| Spectral tab (pitch, freeze, blur) | yes | no effect |
+| Transients | softened a little by the window | intact |
+| Latency | one FFT window (2048 samples, 43 ms at 48 kHz, by default) | none |
+
+In Live, the view also shows each region's band level as a shaded column, as
+it is that level, not the trace, that the gate compares.
+
+### Latency and FFT size
+
+The Spectral engine delays the signal by one FFT window. The plugin reports
+this to the host, which compensates for it, and the global Dry is delayed by
+the same amount so everything stays in step. The window is set in the global
+controls, from 1024 to 16384 points. Larger windows give finer regions and
+cleaner gating; smaller ones keep transients sharper and cut the latency.
+Changing it causes a short dropout; some hosts pick up the new latency only
+when the transport stops.
+
+### Stereo
+
+With **Stereo** bands (the default) each region keeps the input's left and
+right. Gating decisions are still taken on their sum, the mono signal the
+view shows, and applied to both sides. **Mono** bands sum the input first and
+use half the CPU. For stereo bands the **pan law** decides what panning does:
+**Balance** turns down the side the region moves away from; **Stereo pan**
+folds that side into the other, so nothing is lost.
+
+### On, Solo, and deleting a region
+
+- **On** acts at the region's input: off, nothing new enters it, but its
+  delay and reverb tails ring out.
+- **Solo** acts at the output: every region not soloed is silenced (the
+  global Dry stays).
+- **×** deletes the region and frees its slot. A region drawn in that slot
+  later starts clean, with no leftover tail.
 
 ## Using it
 
-The spectrum view is the whole interface.
+### Layout
 
-- Drag on empty space to draw a region. Drag a border to move it, drag inside
-  to move the whole band.
-- The dashed line is the gate: what rises above it passes, the rest of the band
-  is dropped. Drag it up into the trace and only the peaks get through.
-- The solid line sets the region's gain (drag it up and down), the round
-  handle on it its pan (drag it left and right, across the region's width).
-  Each moves only its own value.
-- Select a region (click it, or its row in the column) and its settings show
-  under the spectrum, where they stay while you drag its lines: tabs for its
-  dynamics, spectral effects, delay and degrade stages, and beside them its
-  output (its own dry band, its repeats, the reverb send).
-- Each region has its own presets (everything about it but its frequency
-  range), in the bar over its output knobs; "..." opens the browser. They are
-  shared by every Dede instance.
-- Ctrl+drag a region to copy it, every setting with it, and place the copy.
-  A moved region's borders stick to the other regions' borders, as a dragged
-  border does, so a copy can be set right beside its original.
-- Double-click a line (gate, ceiling, gain) or the pan handle to reset it;
-  the gate and the ceiling go back to off.
-- Delete or Backspace removes the selected region. Up to eight at once.
+- **Top bar**: the preset bar, the gear (global controls), and the **i**
+  (in-app help). Clicking the logo shows the splash screen.
+- **Region column** (left): one row per slot, with its number, **×** or
+  **+**, On, Solo and two meters (how much of the band the gate lets through,
+  and the region's output level). Click a row to select its region.
+- **Levels** (under the column): global Dry, Delays (all regions' repeats),
+  Reverb (the shared reverb's return) and Output, then the output meter.
+- **Spectrum view**: the input spectrum and the regions drawn over it.
+- **Region dock** (under the spectrum): the selected region's settings. Tabs
+  on the left (Dynamics, Spectral, Delay, Degrade); on the right, always in
+  view, the region's preset bar and its output knobs (Dry, Delay, Reverb).
+  The dock stays open while you drag the region's lines, so you can watch the
+  knobs move.
 
-Delay times read three ways, chosen per region: seconds, a proportion of a
-whole note at the host tempo (0.25 is a quarter note), or a multiple of the
-period of the last MIDI note received. The last one turns a short delay into a
-resonator tuned to whatever is played, so Dede takes MIDI input while being an
-audio effect.
+### Mouse and keyboard
 
-On the view itself, the wheel zooms the level axis and ctrl+wheel the frequency
-axis; alt+drag or middle-drag pans, and a double-click resets both. Plain drag
-is reserved for drawing regions.
+| Action | Gesture |
+|---|---|
+| Draw a region | drag on empty space |
+| Draw a region over others | shift+drag anywhere, or **+** on a free row |
+| Move a border | drag it (it sticks to neighbouring borders, so regions meet exactly) |
+| Move a whole region | drag inside it |
+| Copy a region | ctrl+drag it, then drop the copy |
+| Set gate, ceiling, gain | drag the line up or down |
+| Set pan | drag the round handle left or right |
+| Reset a line or the pan | double-click it (gate and ceiling go back to off) |
+| Delete the selected region | Delete or Backspace |
+| Zoom the level axis | mouse wheel |
+| Zoom the frequency axis | ctrl+wheel |
+| Pan the view | alt+drag or middle-drag |
+| Reset the view | double-click on empty space |
+| Type a knob's value | right-click it |
 
-The plugin reports its analysis latency (2048 samples, 43 ms at 48 kHz) to the
-host, which compensates for it. The dry path is delayed to match, so nothing
-inside Dede is out of step with anything else.
+Hover help is on every control; the **?** in the global controls turns it on
+and off.
+
+### The region dock
+
+**Dynamics**: Gate and Ceiling switches (they follow the lines: switching one
+off parks its line at the end of its range, switching it back on restores
+it), and for each line its ratio, knee, attack and release; the gate also has
+a range (how far down it goes).
+
+**Spectral**: Pitch (semitones, fractional). Freeze, in Tonal mode (held
+notes stay notes) or Wash (a smooth static texture), triggered by hand or by
+the host tempo: **Retrigger** captures again at each step, **On/off** freezes
+one step and lets the next through. Freeze **Width** spreads the frozen left
+and right apart (stereo bands only). Blur smears the band over time, a tail
+confined to the band. This tab has no effect in the Live engine.
+
+**Delay**: the time mode, left and right times, left, right and cross
+feedback. Its switch follows the region's Delay level.
+
+**Degrade**: saturation (four models, with a drive that changes the tone, not
+the level), bit-crush, downsample, transpose and freq shift, each with its own
+switch and position.
+
+A new region starts as a slight synced echo with a little reverb, so you hear
+it as soon as it is drawn.
+
+### Global controls
+
+The gear opens the settings you set once rather than play: the reverb's room
+size, damping and width; the engine (Spectral or Live); stereo or mono bands;
+the pan law; the FFT size; and the hover help switch.
+
+### Presets
+
+There are two levels of presets:
+
+- **Global presets**, in the top bar, recall everything, regions included.
+  The factory set covers the main uses: Three Bands, Ping Pong Highs, Gated
+  Wash, Tuned Strings, Drum Splitter, Freeze Pad, Barber Pole, and more. User
+  presets are saved under `FX-Mechanics/SpectralDede/Presets` in your user
+  data folder (`~/.config` on Linux, `~/Library/Application Support` on
+  macOS, `%APPDATA%` on Windows).
+- **Region presets**, in the region dock, recall everything about one region
+  except its frequency range. A region preset saved from one region shows up
+  in every region, in every instance of the plugin. The factory set includes
+  echoes (Slap Back, Dotted Echo, Tape Echo), freezes, a shimmer climb, a
+  barber pole and a MIDI-tuned resonator. User region presets go to
+  `FX-Mechanics/Modules/SpectralRegion/Presets`.
+
+Presets and host sessions save the FFT size and engine too, so they also
+recall the latency.
+
+### A few starting points
+
+- **Echo only the melody**: draw a region over the melody's range and raise
+  its gate until only the peaks of the trace cross it. Turn its Delay up.
+- **Reverb on the noise only**: draw a region over the same range with its
+  ceiling just under the peaks and its gate off. Turn its Dry and Delay down
+  and its Reverb send up.
+- **Tuned resonator**: set a region's time mode to MIDI note, times of 1 and
+  2, feedback high, and play notes into the plugin's MIDI input.
+- **Shimmer**: put Transpose in the loop at +12 and give the delay some
+  feedback.
 
 ## Building
 
@@ -63,7 +257,8 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j2 --target SpectralDede_VST3
 ```
 
-Formats built are VST3, AU (macOS) and a standalone application.
+Formats built are VST3, AU (macOS) and a standalone application. The design
+is described in [doc/architecture.md](doc/architecture.md).
 
 Releases are cut by pushing a version tag (`git tag v0.1.0 && git push
 --tags`), which builds and publishes Linux, Windows and a macOS universal
@@ -94,3 +289,5 @@ xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/VST3/SpectralDede.vst3"
 ## Licence
 
 GNU LGPL v3.0 or later.
+
+![Spectral Dédé](Source/Assets/splash.jpg)
